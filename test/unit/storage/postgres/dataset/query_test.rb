@@ -56,13 +56,6 @@ describe PGI::Dataset::Query do
       end
       _(e.message).must_equal "WHERE clause can either be a Hash or a String"
     end
-
-    it "raises error on values instead of placeholders" do
-      e = assert_raises RuntimeError do
-        query.where("name = 'joe'")
-      end
-      _(e.message).must_equal "Use placeholders in WHERE clause"
-    end
   end
 
   describe "#limit" do

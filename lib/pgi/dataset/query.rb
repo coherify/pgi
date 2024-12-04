@@ -40,8 +40,6 @@ module PGI
             "#{Utils.sanitize_columns(k, @table).first} = $#{@params.size}"
           end.join(" AND ")
         when String
-          raise "Use placeholders in WHERE clause" if clause =~ /=(?!\s*[?$])/
-
           @params += params
           clause.gsub!(/([=<>]{1}\s{0,})(\?)/).with_index { |_, i| "#{Regexp.last_match(1)}$#{i + 1}" }
         else
