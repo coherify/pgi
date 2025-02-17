@@ -17,8 +17,11 @@ module PGI
 
       @conn = conn || PG::Connection.new(conn_uri).tap do |new_conn|
         regi = PG::BasicTypeRegistry.new.register_default_types
+
+        regi.register_type 0, "uuid", PG::TextEncoder::String, PG::TextDecoder::String
         regi.register_type 0, "json", PG::TextEncoder::JSON, JSONDecoder
         regi.alias_type(0, "jsonb", "json")
+
         new_conn.type_map_for_results = PG::BasicTypeMapForResults.new(new_conn, registry: regi)
         new_conn.type_map_for_queries = PG::BasicTypeMapForQueries.new(new_conn, registry: regi)
       end || raise("no connection provided")
