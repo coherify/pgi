@@ -53,7 +53,7 @@ describe PGI::DB do
           SQL
         end
 
-        subject.instance_variable_set(:@_retries, 10)
+        subject.instance_variable_set(:@max_retries, 0)
 
         assert_raises PG::ConnectionBad do
           subject.with do |conn|
@@ -109,5 +109,17 @@ describe PGI::DB do
 
   it "relays missing methods to PG connection" do
     _(subject.host).must_equal "localhost"
+  end
+
+  it "responds to PG::Connection methods" do
+    _(subject.respond_to?(:host)).must_equal true
+    _(subject.respond_to?(:nonexistent_method_xyz)).must_equal false
+  end
+
+  it "connection responds to PG::Connection methods" do
+    subject.with do |conn|
+      _(conn.respond_to?(:host)).must_equal true
+      _(conn.respond_to?(:nonexistent_method_xyz)).must_equal false
+    end
   end
 end

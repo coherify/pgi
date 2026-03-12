@@ -58,7 +58,8 @@ module PGI
         # @param columns [Symbol] the column name(s) to sanitize
         # @return [Boolean] true if valid, otherwise false
         def valid_column?(column)
-          column.to_s =~ /\*|[a-z0-9_]+/i
+          col = column.to_s
+          col == "*" || col =~ /\A[a-z_][a-z0-9_]*\z/i
         end
       end
     end

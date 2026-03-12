@@ -152,7 +152,7 @@ module PGI
 
     class << self
       def [](database, table, **options)
-        raise "Invalid table name: #{table}" unless table =~ /[a-z_]+/
+        raise "Invalid table name: #{table}" unless table.to_s =~ /\A[a-z_][a-z0-9_]*\z/
 
         mod = clone
         mod.instance_variable_set("@database", database)
