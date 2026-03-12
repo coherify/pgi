@@ -29,5 +29,4 @@ services:
         if [ \"$$i\" -ge 30 ]; then echo \"Postgres not ready\"; exit 1; fi;
         sleep 1;
       done &&
-      source .env/test &&
       bundle exec rake test:rubocop && bundle exec rake test:spec"
