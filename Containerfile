@@ -4,7 +4,7 @@ RUN apk add --no-cache build-base postgresql-dev postgresql-client
 
 WORKDIR /app
 
-COPY Gemfile Gemfile.lock pgi.gemspec ./
+COPY Gemfile Gemfile.lock pgi.gemspec VERSION ./
 COPY lib/pgi/version.rb ./lib/pgi/
 RUN bundle install
 
