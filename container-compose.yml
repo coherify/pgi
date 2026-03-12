@@ -18,6 +18,8 @@ services:
     build:
       context: .
       dockerfile: Containerfile
+    volumes:
+      - .:/app
     environment:
       PG_CONN_URI: postgresql://pgi:password@postgres/pgi_test
     depends_on:
