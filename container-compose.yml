@@ -15,18 +15,13 @@ services:
       retries: 30
 
   ruby:
-    image: ruby:3.4-alpine
-    working_dir: /app
-    volumes:
-      - .:/app
+    build: .
     environment:
       PG_CONN_URI: postgresql://pgi:password@postgres/pgi_test
     depends_on:
       - postgres
     command: >-
-      sh -lc "apk add --no-cache build-base postgresql-dev postgresql-client &&
-      bundle install &&
-      i=0;
+      sh -lc "i=0;
       until pg_isready -h postgres -U pgi -d pgi_test >/dev/null 2>&1; do
         i=$$((i+1));
         if [ \"$$i\" -ge 30 ]; then echo \"Postgres not ready\"; exit 1; fi;
