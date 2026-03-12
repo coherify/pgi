@@ -108,6 +108,6 @@ describe PGI::DB do
   end
 
   it "relays missing methods to PG connection" do
-    _(subject.host).must_equal "localhost"
+    _(subject.host).must_equal "postgres"
   end
 end

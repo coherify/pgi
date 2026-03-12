@@ -41,5 +41,5 @@ end
 
 desc "Run test suite"
 task :test do
-  exec "source .env.test && podman compose run --rm ruby"
+  exec "podman compose run --rm ruby"
 end
