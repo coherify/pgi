@@ -1,12 +1,30 @@
 services:
   postgres:
-    image: postgres:17-bullseye
-    container_name: pgi_postgres
-    restart: always
+    image: postgres:18-alpine
     shm_size: 128mb
     ports:
-      - 5432:5432
+      - 5434:5432
     environment:
       POSTGRES_USER: pgi
       POSTGRES_PASSWORD: password
       POSTGRES_DB: pgi_test
+    healthcheck:
+      test: "pg_isready -U pgi -d pgi_test"
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  ruby:
+    build: .
+    environment:
+      PG_CONN_URI: postgresql://pgi:password@postgres/pgi_test
+    depends_on:
+      - postgres
+    command: >-
+      sh -lc "i=0;
+      until pg_isready -h postgres -U pgi -d pgi_test >/dev/null 2>&1; do
+        i=$$((i+1));
+        if [ \"$$i\" -ge 30 ]; then echo \"Postgres not ready\"; exit 1; fi;
+        sleep 1;
+      done &&
+      bundle exec rake test"
