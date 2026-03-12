@@ -22,7 +22,7 @@ namespace :test do
   end
 
   desc "Run specs"
-  task :specs do
+  task :spec do
     args = ARGV.dup
     t = args.shift
     ENV["TEST"] = args.shift
@@ -36,8 +36,10 @@ namespace :test do
   end
 
   desc "Run specs with verbose output"
-  task "test:verbose" => %i[opts specs]
+  task "test:verbose" => %i[opts spec]
 end
 
 desc "Run test suite"
-task test: ["test:specs", "test:rubocop"]
+task :test do
+  exec "source .env.test && podman compose run --rm ruby"
+end

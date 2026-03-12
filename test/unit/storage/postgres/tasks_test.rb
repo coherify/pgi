@@ -10,16 +10,15 @@ def execute_rake(task, env = "test")
 end
 
 describe "tasks.rb" do
+  include PGI::Test::Methods
+
+  let(:pg_conn) { postgres_connection }
+
   before do
     PGI::SchemaMigrator.configure do |config|
       config.migration_files = [File.realpath("test/fixtures/migrations.rb")]
       config.seed_files = []
-      config.pg_conn = PGI::DB.configure do |options|
-        options.pool_size = 1
-        options.pool_timeout = 5
-        options.pg_conn_uri = "postgresql://pgi:password@localhost:5432/pgi_test"
-        options.logger = LOG_CATCHER
-      end
+      config.pg_conn = pg_conn
     end
 
     Rake.application.rake_require "pgi/tasks"

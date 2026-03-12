@@ -12,7 +12,7 @@ module PGI
         end
         attributes = attributes.sort_by { |x, _| x[:key] }
         @attributes = attributes.map.with_index do |v, i|
-          Param.new(**v.merge(index: "$#{i + 1}"))
+          Param.new(**v, index: "$#{i + 1}")
         end
       end
 
@@ -28,7 +28,7 @@ module PGI
         end
       end
 
-      alias_method :indices, :indexs
+      alias indices indexs
       def length
         attributes.length
       end

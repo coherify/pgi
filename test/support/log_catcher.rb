@@ -43,8 +43,8 @@ module PGI
             new(StringIO.new)
           end
 
-          def run(&block)
-            logger.run(&block)
+          def run(&)
+            logger.run(&)
           end
         end
       end

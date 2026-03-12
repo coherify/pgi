@@ -3,6 +3,7 @@ source "https://rubygems.org"
 gemspec
 
 gem "bundler-audit"
+gem "logger"
 gem "minitest"
 gem "minitest-reporters"
 gem "pry"

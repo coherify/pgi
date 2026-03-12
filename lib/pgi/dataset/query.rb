@@ -157,10 +157,10 @@ module PGI
       end
 
       # Loop through records in a result set
-      def each(&block)
+      def each(&)
         @database
           .exec_stmt(Utils.stmt_name(@table, sql), sql, params)
-          .each(&block)
+          .each(&)
       end
 
       # Explain some query
@@ -198,7 +198,7 @@ module PGI
       def to_s
         "#<PGI::Dataset::Query:#{object_id} @sql=#{sql} @params=#{params}>"
       end
-      alias_method :inspect, :to_s
+      alias inspect to_s
     end
   end
 end

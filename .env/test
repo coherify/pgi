@@ -1,0 +1,5 @@
+set -o allexport
+
+PG_CONN_URI="postgresql://pgi:password@localhost:5432/pgi_test"
+
+set +o allexport

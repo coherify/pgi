@@ -18,8 +18,8 @@ module PGI
     #
     # @param args [String|Array] conditions to search for
     # @return [Query]
-    def where(*args)
-      Query.new(@database, @table, nil, **@options).where(*args)
+    def where(*)
+      Query.new(@database, @table, nil, **@options).where(*)
     end
 
     # Insert new row

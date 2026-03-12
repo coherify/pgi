@@ -11,7 +11,7 @@ Gem::Specification.new do |gem|
   gem.summary       = "Simple and convenient interface for PostgreSQL with a few enhancements"
   gem.homepage      = "https://github.com/coherify/pgi"
 
-  gem.required_ruby_version = ">= 3.0.0"
+  gem.required_ruby_version = ">= 3.4.0"
 
   gem.executables   = gem.files.grep(%r{^bin/}).map { |f| File.basename(f) }
   gem.require_paths = ["lib"]
@@ -19,4 +19,5 @@ Gem::Specification.new do |gem|
 
   gem.add_dependency "connection_pool", "~> 2.4"
   gem.add_dependency "pg", "~> 1.5"
+  gem.metadata["rubygems_mfa_required"] = "true"
 end
