@@ -15,7 +15,9 @@ services:
       retries: 30
 
   ruby:
-    build: .
+    build:
+      context: .
+      dockerfile: Containerfile
     environment:
       PG_CONN_URI: postgresql://pgi:password@postgres/pgi_test
     depends_on:
