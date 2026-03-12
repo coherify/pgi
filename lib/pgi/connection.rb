@@ -60,5 +60,9 @@ module PGI
     def method_missing(name, ...)
       @conn.__send__(name, ...)
     end
+
+    def respond_to_missing?(name, include_private = false)
+      @conn.respond_to?(name, include_private) || super
+    end
   end
 end
