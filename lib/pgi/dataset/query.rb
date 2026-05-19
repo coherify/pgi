@@ -106,7 +106,7 @@ module PGI
         clause =
           if @cursor
             # Append order by cursor
-            order(@cursor[0], @cursor[2])
+            order(@cursor[0], @cursor[2]) unless @order.key?(Utils.sanitize_columns(@cursor[0], @table))
             cursor_dir = @cursor[2] == :asc ? ">" : "<"
 
             if @where

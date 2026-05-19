@@ -126,7 +126,11 @@ module PGI
     def page(cursor = nil, size = 10, sort_by = :id, sort_dir = :asc, *where)
       query = Query.new(@database, @table, nil, **@options)
       query = query.where(*where)
-      query = cursor ? query.cursor(sort_by, cursor, sort_dir) : query.cursor(nil).order(sort_by, sort_dir)
+      if cursor
+        query = query.order(sort_by, sort_dir).cursor(:id, cursor)
+      else
+        query = query.cursor(nil).order(sort_by, sort_dir)
+      end
       query = query.limit(size)
 
       _to_models query.to_a
