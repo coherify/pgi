@@ -108,6 +108,16 @@ module PGI
       _to_model where.order(sort_by.to_sym, :desc).limit(1).cursor(nil).first
     end
 
+    # Declare which columns may be used as sort_by in page().
+    # Each listed column must have a composite index on (column, id).
+    # :id is always sortable and does not need to be listed.
+    # If sortable is never called, any column is accepted (no enforcement).
+    #
+    # @param columns [Symbol, ...] sortable column names
+    def sortable(*columns)
+      @sortable_columns = columns.map(&:to_sym)
+    end
+
     # Get number of rows
     #
     # @return [Integer] number of rows in the table
@@ -134,6 +144,11 @@ module PGI
     # @param where [Array] optional WHERE clause forwarded to Query#where
     # @return [Array] list of Models or Hashes
     def page(cursor = nil, size = 10, sort_by = :id, sort_dir = :asc, *where)
+      if @sortable_columns && sort_by.to_sym != :id && !@sortable_columns.include?(sort_by.to_sym)
+        raise "Cannot sort by :#{sort_by} — not declared as sortable. " \
+              "Add `sortable :#{sort_by}` and create a composite index (#{sort_by}, id)."
+      end
+
       query = Query.new(@database, @table, nil, **@options).where(*where).limit(size)
 
       if cursor

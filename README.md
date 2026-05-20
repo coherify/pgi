@@ -39,11 +39,14 @@ The `PGI::Dataset` is a super light weight ActiveRecord::Relation replacement. I
 * `#first` - get the first record in a set
 * `#all`- get an array of records
 * `#count`- get the number of rows in a table
+* `#sortable(:col, ...)` - declare which columns may be used as `sort_by` in `page()`; `:id` is always allowed
 * `#page(cursor, size, sort_by, sort_dir)` - keyset pagination; pass `nil` for the first page, then the **id of the last row** as the cursor for each subsequent page
 
 ```ruby
 class Repository
   extend PGI::Dataset[DB, :members, cursor: nil, scope: "deleted_at IS NULL"]
+
+  sortable :name, :created_at   # only these columns (+ :id) are accepted by page()
 end
 
 # First page — sorted by name
@@ -65,6 +68,24 @@ page2 = Repository.page(page1.last["id"], 20, :name, :asc)
 #   AND id > $1
 # ORDER BY id ASC
 # LIMIT 20
+```
+
+### Sortable columns
+
+Call `sortable` in your repository to declare which columns `page()` will accept as `sort_by`. Any attempt to sort by an unlisted column raises at runtime with a message telling you what index to create. `:id` is always allowed and does not need to be listed.
+
+If `sortable` is never called the whitelist is not enforced — any column is accepted.
+
+```ruby
+class Repository
+  extend PGI::Dataset[DB, :members, cursor: nil, scope: "deleted_at IS NULL"]
+
+  sortable :name, :created_at
+end
+
+Repository.page(nil, 20, :email, :asc)
+# => RuntimeError: Cannot sort by :email — not declared as sortable.
+#    Add `sortable :email` and create a composite index (email, id).
 ```
 
 ### Pagination and indexes
