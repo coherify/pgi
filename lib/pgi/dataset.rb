@@ -151,16 +151,17 @@ module PGI
 
       query = Query.new(@database, @table, nil, **@options).where(*where).limit(size)
 
-      if cursor
-        if sort_by == :id
-          query = query.cursor(:id, cursor, nil, sort_dir)
+      query =
+        if cursor
+          if sort_by == :id
+            query.cursor(:id, cursor, nil, sort_dir)
+          else
+            query.cursor_subquery(sort_by, cursor, sort_dir)
+          end
         else
-          query = query.cursor_subquery(sort_by, cursor, sort_dir)
+          q = query.cursor(nil).order(sort_by, sort_dir)
+          sort_by == :id ? q : q.order(:id, sort_dir)
         end
-      else
-        query = query.cursor(nil).order(sort_by, sort_dir)
-        query = query.order(:id, sort_dir) unless sort_by == :id
-      end
 
       _to_models query.to_a
     end
