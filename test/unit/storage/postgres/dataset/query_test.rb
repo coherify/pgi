@@ -82,7 +82,7 @@ describe PGI::Dataset::Query do
   end
 
   describe "#cursor" do
-    it "set a keyset pagination cursor" do
+    it "generates a single-column cursor for :id" do
       query.cursor(:id, 0).tap do |q|
         _(q.sql).must_match(/"dataset"\."id" > \$1/)
         _(q.sql).must_match(/ORDER BY "dataset"\."id" ASC/)
@@ -90,20 +90,35 @@ describe PGI::Dataset::Query do
       end
     end
 
-    it "combines keyset pagination with a WHERE clause" do
-      query.where(name: "joe").cursor(:id, 0).tap do |q|
-        _(q.sql).must_match(/"dataset"\."name" = \$1/)
-        _(q.sql).must_match(/"dataset"\."id" > \$2/)
-        _(q.sql).must_match(/ORDER BY "dataset"\."id" ASC/)
-        _(q.params).must_equal ["joe", 0]
+    it "generates a composite cursor for non-id sort columns" do
+      query.cursor(:age, 21, 3).tap do |q|
+        _(q.sql).must_match(/\("dataset"\."age", "dataset"\."id"\) > \(\$1, \$2\)/)
+        _(q.sql).must_match(/ORDER BY "dataset"\."age" ASC, "dataset"\."id" ASC/)
+        _(q.params).must_equal [21, 3]
       end
     end
 
-    it "raises error on missing offset" do
+    it "generates a composite cursor in descending direction" do
+      query.cursor(:age, 21, 3, :desc).tap do |q|
+        _(q.sql).must_match(/\("dataset"\."age", "dataset"\."id"\) < \(\$1, \$2\)/)
+        _(q.sql).must_match(/ORDER BY "dataset"\."age" DESC, "dataset"\."id" DESC/)
+        _(q.params).must_equal [21, 3]
+      end
+    end
+
+    it "combines composite cursor with a WHERE clause" do
+      query.where(name: "joe").cursor(:age, 21, 3).tap do |q|
+        _(q.sql).must_match(/"dataset"\."name" = \$1/)
+        _(q.sql).must_match(/\("dataset"\."age", "dataset"\."id"\) > \(\$2, \$3\)/)
+        _(q.params).must_equal ["joe", 21, 3]
+      end
+    end
+
+    it "raises error on missing cursor value" do
       e = assert_raises RuntimeError do
         query.cursor(:id)
       end
-      _(e.message).must_equal "offset cannot be nil"
+      _(e.message).must_equal "cursor value cannot be nil"
     end
   end
 

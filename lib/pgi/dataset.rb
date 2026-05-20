@@ -115,23 +115,35 @@ module PGI
       Query.new(@database, @table, nil, **@options).count
     end
 
-    # Get a page (keyset pagination)
+    # Get a page of results using keyset pagination.
     #
-    # @param cursor [*] the page cursor
-    # @param size [Integer] the page size
-    # @param sort_by [Symbol] the column to sort by
-    # @param sort_dir [Symbol] the direction to sort by
-    # @param where [Array] an optional WHERE clause
-    # @return [Array] list of Models, Hashes
+    # Pass nil as cursor for the first page. For subsequent pages pass the
+    # last row returned by the previous call — page() extracts the sort and
+    # id values it needs automatically.
+    #
+    # Requires a composite index on (sort_by, id) for optimal performance.
+    #
+    # @param cursor [Hash, nil] last row from the previous page, or nil
+    # @param size [Integer] number of rows per page
+    # @param sort_by [Symbol] column to sort by
+    # @param sort_dir [Symbol] :asc or :desc
+    # @param where [Array] optional WHERE clause forwarded to Query#where
+    # @return [Array] list of Models or Hashes
     def page(cursor = nil, size = 10, sort_by = :id, sort_dir = :asc, *where)
-      query = Query.new(@database, @table, nil, **@options)
-      query = query.where(*where)
+      query = Query.new(@database, @table, nil, **@options).where(*where).limit(size)
+
       if cursor
-        query = query.order(sort_by, sort_dir).cursor(:id, cursor)
+        id_val = cursor["id"]
+        if sort_by == :id
+          query = query.order(:id, sort_dir).cursor(:id, id_val, nil, sort_dir)
+        else
+          sort_val = cursor[sort_by.to_s]
+          query = query.order(sort_by, sort_dir).cursor(sort_by, sort_val, id_val, sort_dir)
+        end
       else
         query = query.cursor(nil).order(sort_by, sort_dir)
+        query = query.order(:id, sort_dir) unless sort_by == :id
       end
-      query = query.limit(size)
 
       _to_models query.to_a
     end

@@ -142,22 +142,30 @@ describe PGI::Dataset do
   describe "#page" do
     it "paginates forward by id" do
       3.times { |x| repo.insert(name: "jimbo", age: 20 + x) }
-      _(repo.page(nil, 1)).must_equal [{ "id" => 1, "name" => "joe", "age" => 25 }]
-      _(repo.page(1, 1)).must_equal [{ "id" => 2, "name" => "jimbo", "age" => 20 }]
-      _(repo.page(2, 1)).must_equal [{ "id" => 3, "name" => "jimbo", "age" => 21 }]
-      _(repo.page(3, 1)).must_equal [{ "id" => 4, "name" => "jimbo", "age" => 22 }]
+      page1 = repo.page(nil, 2)
+      _(page1).must_equal [
+        { "id" => 1, "name" => "joe",   "age" => 25 },
+        { "id" => 2, "name" => "jimbo", "age" => 20 }
+      ]
+      page2 = repo.page(page1.last, 2)
+      _(page2).must_equal [
+        { "id" => 3, "name" => "jimbo", "age" => 21 },
+        { "id" => 4, "name" => "jimbo", "age" => 22 }
+      ]
     end
 
-    it "applies sort_by and sort_dir independently of the id cursor" do
+    it "paginates a globally sorted list via composite cursor" do
       3.times { |x| repo.insert(name: "jimbo", age: 20 + x) }
-      # ids 2,3,4 have ages 20,21,22 — page from id 1, sorted by age desc gives highest ages first
-      _(repo.page(1, 2, :age, :desc)).must_equal [
-        { "id" => 4, "name" => "jimbo", "age" => 22 },
-        { "id" => 3, "name" => "jimbo", "age" => 21 }
-      ]
-      _(repo.page(1, 2, :age, :asc)).must_equal [
+      # Full dataset sorted by age asc: 20(id2), 21(id3), 22(id4), 25(id1)
+      page1 = repo.page(nil, 2, :age, :asc)
+      _(page1).must_equal [
         { "id" => 2, "name" => "jimbo", "age" => 20 },
         { "id" => 3, "name" => "jimbo", "age" => 21 }
+      ]
+      page2 = repo.page(page1.last, 2, :age, :asc)
+      _(page2).must_equal [
+        { "id" => 4, "name" => "jimbo", "age" => 22 },
+        { "id" => 1, "name" => "joe",   "age" => 25 }
       ]
     end
   end

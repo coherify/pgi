@@ -21,7 +21,7 @@ module PGI
         @order     = options.fetch(:order, {})
         @limit     = options.fetch(:limit, 10)
         @returning = options.fetch(:returning, nil)
-        @cursor    = options.fetch(:cursor, [:id, 0, :asc])
+        @cursor    = options.fetch(:cursor, { sort_col: :id, sort_val: 0, id_val: nil, dir: :asc })
       end
 
       # Adds a WHERE clause to the query
@@ -80,21 +80,29 @@ module PGI
 
       # Set a cursor for keyset pagination
       #
-      # @see Query#limit for setting a page size
-      # @param column [Symbol] the column to use for pagination (default: `:id`). Disable cursor with .cursor(nil)
-      # @param offset [*] the row offset for pagination - cannot be nil if column is not nil
-      # @param direction [Symbol] the direction the sort should take - can be either `:desc` or `:asc`
+      # For single-column pagination (sort_by == :id):
+      #   cursor(:id, last_id)
+      # For composite pagination (sort_by != :id):
+      #   cursor(:name, last_name_val, last_id, :asc)
+      #   Generates: WHERE (sort_col, id) > ($1, $2) ORDER BY sort_col, id
+      #
+      # Disable with cursor(nil).
+      #
+      # @param sort_col [Symbol] the sort column. Disable cursor with .cursor(nil)
+      # @param sort_val [*] value of sort_col on the last seen row
+      # @param id_val [*] value of id on the last seen row (nil for single-column :id cursor)
+      # @param direction [Symbol] :asc or :desc
       # @return [Query] return the Query instance (for method chaining)
-      def cursor(column, offset = nil, direction = :asc)
+      def cursor(sort_col, sort_val = nil, id_val = nil, direction = :asc)
         @cursor =
-          if column.nil?
+          if sort_col.nil?
             nil
           else
-            raise "offset cannot be nil" unless offset
-            raise "Invalid column name: #{column}" unless Utils.valid_column?(column)
+            raise "cursor value cannot be nil" unless sort_val
+            raise "Invalid column name: #{sort_col}" unless Utils.valid_column?(sort_col)
             raise "Invalid direction: #{direction}" unless %i[asc desc].include?(direction)
 
-            [column, offset, direction]
+            { sort_col: sort_col, sort_val: sort_val, id_val: id_val, dir: direction }
           end
         self
       end
@@ -105,15 +113,25 @@ module PGI
       def sql
         clause =
           if @cursor
-            # Append order by cursor
-            order(@cursor[0], @cursor[2]) unless @order.key?(Utils.sanitize_columns(@cursor[0], @table))
-            cursor_dir = @cursor[2] == :asc ? ">" : "<"
+            dir_op       = @cursor[:dir] == :asc ? ">" : "<"
+            sort_col_key = Utils.sanitize_columns(@cursor[:sort_col], @table)
+            sort_col_sql = sort_col_key.first
 
-            if @where
-              "#{Utils.sanitize_columns(@cursor[0], @table).first} #{cursor_dir} $#{@params.size + 1} AND (#{@where})"
-            else
-              "#{Utils.sanitize_columns(@cursor[0], @table).first} #{cursor_dir} $#{@params.size + 1}"
-            end
+            order(@cursor[:sort_col], @cursor[:dir]) unless @order.key?(sort_col_key)
+
+            cursor_clause =
+              if @cursor[:id_val]
+                # Composite: (sort_col, id) > ($N, $N+1)
+                id_col_key = Utils.sanitize_columns(:id, @table)
+                order(:id, @cursor[:dir]) unless @order.key?(id_col_key)
+                id_col_sql = id_col_key.first
+                "(#{sort_col_sql}, #{id_col_sql}) #{dir_op} ($#{@params.size + 1}, $#{@params.size + 2})"
+              else
+                # Single column: sort_col > $N
+                "#{sort_col_sql} #{dir_op} $#{@params.size + 1}"
+              end
+
+            @where ? "#{cursor_clause} AND (#{@where})" : cursor_clause
           else
             @where
           end
@@ -134,7 +152,11 @@ module PGI
       #
       # @return [Array] params
       def params
-        ((cur = @cursor&.flatten) && (@params + [cur[1]])) || @params
+        return @params unless @cursor
+
+        vals = [@cursor[:sort_val]]
+        vals << @cursor[:id_val] if @cursor[:id_val]
+        @params + vals
       end
 
       # Get the first record in a result set
