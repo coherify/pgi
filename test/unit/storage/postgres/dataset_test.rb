@@ -147,14 +147,14 @@ describe PGI::Dataset do
         { "id" => 1, "name" => "joe",   "age" => 25 },
         { "id" => 2, "name" => "jimbo", "age" => 20 }
       ]
-      page2 = repo.page(page1.last, 2)
+      page2 = repo.page(page1.last["id"], 2)
       _(page2).must_equal [
         { "id" => 3, "name" => "jimbo", "age" => 21 },
         { "id" => 4, "name" => "jimbo", "age" => 22 }
       ]
     end
 
-    it "paginates a globally sorted list via composite cursor" do
+    it "paginates a globally sorted list via composite subquery cursor" do
       3.times { |x| repo.insert(name: "jimbo", age: 20 + x) }
       # Full dataset sorted by age asc: 20(id2), 21(id3), 22(id4), 25(id1)
       page1 = repo.page(nil, 2, :age, :asc)
@@ -162,7 +162,7 @@ describe PGI::Dataset do
         { "id" => 2, "name" => "jimbo", "age" => 20 },
         { "id" => 3, "name" => "jimbo", "age" => 21 }
       ]
-      page2 = repo.page(page1.last, 2, :age, :asc)
+      page2 = repo.page(page1.last["id"], 2, :age, :asc)
       _(page2).must_equal [
         { "id" => 4, "name" => "jimbo", "age" => 22 },
         { "id" => 1, "name" => "joe",   "age" => 25 }

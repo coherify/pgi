@@ -21,7 +21,15 @@ module PGI
         @order     = options.fetch(:order, {})
         @limit     = options.fetch(:limit, 10)
         @returning = options.fetch(:returning, nil)
-        @cursor    = options.fetch(:cursor, { sort_col: :id, sort_val: 0, id_val: nil, dir: :asc })
+        raw_cursor = options.fetch(:cursor, { sort_col: :id, sort_val: 0, id_val: nil, dir: :asc })
+        @cursor    =
+          case raw_cursor
+          when Array
+            sort_col, sort_val, dir = raw_cursor
+            { sort_col: sort_col, sort_val: sort_val, id_val: nil, dir: dir || :asc }
+          else
+            raw_cursor
+          end
       end
 
       # Adds a WHERE clause to the query
@@ -104,6 +112,38 @@ module PGI
 
             { sort_col: sort_col, sort_val: sort_val, id_val: id_val, dir: direction }
           end
+        self
+      end
+
+      # Set a subquery-based composite cursor for keyset pagination when sort_by != :id.
+      # Keeps the cursor interface as a scalar id while generating globally-sorted pages:
+      #   WHERE (sort_col, id) > (SELECT sort_col, id FROM table WHERE id = $N)
+      # Requires a composite index on (sort_col, id) for efficient seeks.
+      #
+      # @param sort_col [Symbol] the sort column
+      # @param cursor_id [*] the id value of the last seen row (scalar)
+      # @param direction [Symbol] :asc or :desc
+      # @return [Query] return the Query instance (for method chaining)
+      def cursor_subquery(sort_col, cursor_id, direction = :asc)
+        raise "Invalid column name: #{sort_col}" unless Utils.valid_column?(sort_col)
+        raise "Invalid direction: #{direction}" unless %i[asc desc].include?(direction)
+        raise "cursor_id cannot be nil" unless cursor_id
+
+        sort_col_key = Utils.sanitize_columns(sort_col, @table)
+        sort_col_sql = sort_col_key.first
+        id_col_key   = Utils.sanitize_columns(:id, @table)
+        id_col_sql   = id_col_key.first
+        dir_op       = direction == :asc ? ">" : "<"
+
+        order(sort_col, direction) unless @order.key?(sort_col_key)
+        order(:id, direction) unless @order.key?(id_col_key)
+
+        @params << cursor_id
+        subq          = "SELECT #{sort_col_sql}, #{id_col_sql} FROM #{@table} WHERE #{id_col_sql} = $#{@params.size}"
+        cursor_clause = "(#{sort_col_sql}, #{id_col_sql}) #{dir_op} (#{subq})"
+        @cursor       = nil
+        @where        = @where ? "#{cursor_clause} AND (#{@where})" : cursor_clause
+
         self
       end
 

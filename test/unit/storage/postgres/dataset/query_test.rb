@@ -20,6 +20,12 @@ describe PGI::Dataset::Query do
     it "returns the Query instance" do
       _(query.is_a?(PGI::Dataset::Query)).must_equal true
     end
+
+    it "converts legacy array cursor format to hash" do
+      q = PGI::Dataset::Query.new(pg_conn, :dataset, nil, cursor: [:id, 0, :asc])
+      _(q.sql).must_match(/"dataset"\."id" > \$1/)
+      _(q.params).must_equal [0]
+    end
   end
 
   describe "#where" do
@@ -119,6 +125,32 @@ describe PGI::Dataset::Query do
         query.cursor(:id)
       end
       _(e.message).must_equal "cursor value cannot be nil"
+    end
+  end
+
+  describe "#cursor_subquery" do
+    it "generates a composite subquery cursor ascending" do
+      query.cursor_subquery(:age, 3).tap do |q|
+        _(q.sql).must_match(/\("dataset"\."age", "dataset"\."id"\) > \(SELECT "dataset"\."age", "dataset"\."id" FROM dataset WHERE "dataset"\."id" = \$1\)/)
+        _(q.sql).must_match(/ORDER BY "dataset"\."age" ASC, "dataset"\."id" ASC/)
+        _(q.params).must_equal [3]
+      end
+    end
+
+    it "generates a composite subquery cursor descending" do
+      query.cursor_subquery(:age, 3, :desc).tap do |q|
+        _(q.sql).must_match(/\("dataset"\."age", "dataset"\."id"\) < \(SELECT.*\$1\)/)
+        _(q.sql).must_match(/ORDER BY "dataset"\."age" DESC, "dataset"\."id" DESC/)
+        _(q.params).must_equal [3]
+      end
+    end
+
+    it "combines composite subquery cursor with a WHERE clause" do
+      query.where(name: "joe").cursor_subquery(:age, 3).tap do |q|
+        _(q.sql).must_match(/\("dataset"\."age", "dataset"\."id"\) > \(SELECT.*\$2\)/)
+        _(q.sql).must_match(/"dataset"\."name" = \$1/)
+        _(q.params).must_equal ["joe", 3]
+      end
     end
   end
 

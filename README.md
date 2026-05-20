@@ -39,7 +39,7 @@ The `PGI::Dataset` is a super light weight ActiveRecord::Relation replacement. I
 * `#first` - get the first record in a set
 * `#all`- get an array of records
 * `#count`- get the number of rows in a table
-* `#page(cursor, size, sort_by, sort_dir)` - keyset pagination; pass `nil` for the first page, then the last returned row as the cursor for each subsequent page
+* `#page(cursor, size, sort_by, sort_dir)` - keyset pagination; pass `nil` for the first page, then the **id of the last row** as the cursor for each subsequent page
 
 ```ruby
 class Repository
@@ -49,20 +49,34 @@ end
 # First page — sorted by name
 page1 = Repository.page(nil, 20, :name, :asc)
 
-# Next page — pass the last row from the previous page as the cursor
-page2 = Repository.page(page1.last, 20, :name, :asc)
+# Next page — pass the id of the last row as the cursor (scalar, not the row itself)
+page2 = Repository.page(page1.last["id"], 20, :name, :asc)
 
-# Generated SQL (page 2):
+# Generated SQL (page 2, sort_by != :id):
 # SELECT * FROM members
 # WHERE deleted_at IS NULL
-#   AND (name, id) > ($1, $2)
+#   AND (name, id) > (SELECT name, id FROM members WHERE id = $1)
 # ORDER BY name ASC, id ASC
+# LIMIT 20
+
+# Generated SQL (page 2, sort_by == :id):
+# SELECT * FROM members
+# WHERE deleted_at IS NULL
+#   AND id > $1
+# ORDER BY id ASC
 # LIMIT 20
 ```
 
 ### Pagination and indexes
 
-`#page` uses a composite keyset cursor — `WHERE (sort_by, id) > ($last_sort_val, $last_id)` — which allows Postgres to seek directly to the right position in a B-tree index rather than scanning and discarding rows as `LIMIT/OFFSET` does. This gives constant-time page fetches regardless of depth.
+`#page` uses keyset pagination — constant-time page fetches at any depth. The cursor is always a scalar `id` value:
+
+- **Sorting by id**: generates `WHERE id > $cursor ORDER BY id` — simple and direct.
+- **Sorting by another column**: generates a composite subquery cursor:
+  `WHERE (sort_col, id) > (SELECT sort_col, id FROM table WHERE id = $cursor)`
+  Postgres resolves the subquery via a primary-key index seek and then uses the composite index to skip directly to the right position.
+
+`LIMIT/OFFSET` scans and discards all prior rows on every page request — cost grows linearly with depth. Keyset pagination does not.
 
 **This only holds if a matching composite index exists.** Without one, Postgres falls back to a sequential scan and the performance advantage is lost.
 
