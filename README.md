@@ -46,69 +46,66 @@ The `PGI::Dataset` is a super light weight ActiveRecord::Relation replacement. I
 class Repository
   extend PGI::Dataset[DB, :members, cursor: nil, scope: "deleted_at IS NULL"]
 
-  sortable :name, :created_at   # only these columns (+ :id) are accepted by page()
+  # Declare sortable columns — each one requires a composite index on (column, id).
+  # :id is always sortable and does not need to be listed here.
+  sortable :name, :created_at
 end
+```
 
+```sql
+-- Create a composite index for each sortable column.
+-- Two separate single-column indexes are not sufficient — Postgres needs
+-- the combined (column, id) ordering to seek directly to the cursor position.
+CREATE INDEX ON members (name ASC, id ASC);
+CREATE INDEX ON members (created_at ASC, id ASC);
+```
+
+```ruby
 # First page — sorted by name
 page1 = Repository.page(nil, 20, :name, :asc)
 
-# Next page — pass the id of the last row as the cursor (scalar, not the row itself)
+# Next page — pass the id of the last row as the cursor
 page2 = Repository.page(page1.last["id"], 20, :name, :asc)
 
-# Generated SQL (page 2, sort_by != :id):
-# SELECT * FROM members
-# WHERE deleted_at IS NULL
-#   AND (name, id) > (SELECT name, id FROM members WHERE id = $1)
-# ORDER BY name ASC, id ASC
-# LIMIT 20
-
-# Generated SQL (page 2, sort_by == :id):
-# SELECT * FROM members
-# WHERE deleted_at IS NULL
-#   AND id > $1
-# ORDER BY id ASC
-# LIMIT 20
-```
-
-### Sortable columns
-
-Call `sortable` in your repository to declare which columns `page()` will accept as `sort_by`. Any attempt to sort by an unlisted column raises at runtime with a message telling you what index to create. `:id` is always allowed and does not need to be listed.
-
-If `sortable` is never called the whitelist is not enforced — any column is accepted.
-
-```ruby
-class Repository
-  extend PGI::Dataset[DB, :members, cursor: nil, scope: "deleted_at IS NULL"]
-
-  sortable :name, :created_at
-end
-
+# Attempting to sort by a column not in the whitelist raises immediately:
 Repository.page(nil, 20, :email, :asc)
 # => RuntimeError: Cannot sort by :email — not declared as sortable.
 #    Add `sortable :email` and create a composite index (email, id).
 ```
 
-### Pagination and indexes
+Generated SQL for page 2 (`sort_by != :id`):
+```sql
+SELECT * FROM members
+WHERE deleted_at IS NULL
+  AND (name, id) > (SELECT name, id FROM members WHERE id = $1)
+ORDER BY name ASC, id ASC
+LIMIT 20
+```
 
-`#page` uses keyset pagination — constant-time page fetches at any depth. The cursor is always a scalar `id` value:
+Generated SQL for page 2 (`sort_by == :id`):
+```sql
+SELECT * FROM members
+WHERE deleted_at IS NULL
+  AND id > $1
+ORDER BY id ASC
+LIMIT 20
+```
 
-- **Sorting by id**: generates `WHERE id > $cursor ORDER BY id` — simple and direct.
-- **Sorting by another column**: generates a composite subquery cursor:
-  `WHERE (sort_col, id) > (SELECT sort_col, id FROM table WHERE id = $cursor)`
-  Postgres resolves the subquery via a primary-key index seek and then uses the composite index to skip directly to the right position.
+### How keyset pagination works
+
+`#page` fetches rows at constant cost regardless of page depth. The cursor is always the scalar `id` of the last row from the previous page.
+
+- **Sorting by id** — `WHERE id > $cursor ORDER BY id`. Simple seek on the primary key index.
+- **Sorting by another column** — generates a composite subquery cursor so pages are globally sorted:
+  ```sql
+  WHERE (sort_col, id) > (SELECT sort_col, id FROM table WHERE id = $cursor)
+  ORDER BY sort_col, id
+  ```
+  Postgres resolves the subquery via the primary-key index (a single fast lookup), then uses the composite `(sort_col, id)` index to seek directly to that position and scan forward. The two separate single-column indexes are not equivalent — a composite B-tree index is required so that Postgres can seek to an exact `(sort_col, id)` position rather than scanning and filtering.
 
 `LIMIT/OFFSET` scans and discards all prior rows on every page request — cost grows linearly with depth. Keyset pagination does not.
 
-**This only holds if a matching composite index exists.** Without one, Postgres falls back to a sequential scan and the performance advantage is lost.
-
-Create an index for each column you intend to sort by:
-
-```sql
-CREATE INDEX ON members (name ASC, id ASC);
-CREATE INDEX ON members (age  ASC, id ASC);
-```
-
-Sorting by a column with no backing index will produce correct results but will scan the full table on every page request.
+If `sortable` is never called, the column whitelist is not enforced and any column is accepted.
 
 ## Documentation
 
