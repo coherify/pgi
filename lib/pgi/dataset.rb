@@ -42,7 +42,7 @@ module PGI
           " (#{params.columns.join(", ")}) VALUES (#{params.indexs.join(", ")}) "
         end
 
-      _to_model Query.new(@database, @table, command, params: params.values).limit(nil).cursor(nil).to_a.first
+      _to_model Query.new(@database, @table, command, params: params.values, cursor: nil).limit(nil).to_a.first
     end
 
     # Update row
@@ -65,7 +65,7 @@ module PGI
                 "WHERE #{id_param.column} = #{id_param.index} RETURNING *"
 
       # TODO: Query throws `PG::IndeterminateDatatype: ERROR:  could not determine data type of parameter $2`
-      # _to_model Query.new(@database, @table, command, params: params).where(id: id).limit(nil).cursor(nil)
+      # _to_model Query.new(@database, @table, command, params: params).where(id: id).limit(nil)
 
       _to_model @database.exec_stmt(Utils.stmt_name(@table, command), command, params.values)&.first
     end
@@ -76,7 +76,7 @@ module PGI
     # @return [Model,Hash]
     def delete(id)
       command = "DELETE FROM #{@table}"
-      _to_model Query.new(@database, @table, command, **@options).where(id: id).limit(nil).cursor(nil).to_a.first
+      _to_model Query.new(@database, @table, command, **@options, cursor: nil).where(id: id).limit(nil).to_a.first
     end
 
     # Get a row by its id
@@ -84,7 +84,7 @@ module PGI
     # @param id [*] ID of row
     # @return [Model,Hash]
     def find(id)
-      _to_model Query.new(@database, @table, nil, **@options).where(id: id).cursor(nil).first
+      _to_model Query.new(@database, @table, nil, **@options).where(id: id).first
     end
 
     # Get all rows
@@ -98,14 +98,14 @@ module PGI
     #
     # @return [Model,Hash]
     def first(sort_by = :id)
-      _to_model where.order(sort_by.to_sym, :asc).limit(1).cursor(nil).first
+      _to_model where.order(sort_by.to_sym, :asc).first
     end
 
     # Get last row by column (default: :id)
     #
     # @return [Model,Hash]
     def last(sort_by = :id)
-      _to_model where.order(sort_by.to_sym, :desc).limit(1).cursor(nil).first
+      _to_model where.order(sort_by.to_sym, :desc).first
     end
 
     # Declare which columns may be used as sort_by in page().
@@ -149,19 +149,14 @@ module PGI
               "Add `sortable :#{sort_by}` and create a composite index (#{sort_by}, id)."
       end
 
-      query = Query.new(@database, @table, nil, **@options).where(*where).limit(size)
+      query = Query.new(@database, @table, nil, **@options, cursor: nil).where(*where).limit(size)
 
-      query =
-        if cursor
-          if sort_by == :id
-            query.cursor(:id, cursor, nil, sort_dir)
-          else
-            query.cursor_subquery(sort_by, cursor, sort_dir)
-          end
-        else
-          q = query.cursor(nil).order(sort_by, sort_dir)
-          sort_by == :id ? q : q.order(:id, sort_dir)
-        end
+      if cursor
+        query.with_cursor(sort_by, cursor, sort_dir)
+      else
+        query.order(sort_by, sort_dir)
+        query.order(:id, sort_dir) unless sort_by == :id
+      end
 
       _to_models query.to_a
     end

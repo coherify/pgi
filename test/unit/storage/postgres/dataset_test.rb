@@ -191,5 +191,41 @@ describe PGI::Dataset do
         { "id" => 1, "name" => "joe",   "age" => 25 }
       ]
     end
+
+    it "paginates in descending order by id" do
+      2.times { |x| repo.insert(name: "jimbo", age: 20 + x) }
+      page1 = repo.page(nil, 2, :id, :desc)
+      _(page1).must_equal [
+        { "id" => 3, "name" => "jimbo", "age" => 21 },
+        { "id" => 2, "name" => "jimbo", "age" => 20 }
+      ]
+      page2 = repo.page(page1.last["id"], 2, :id, :desc)
+      _(page2).must_equal [
+        { "id" => 1, "name" => "joe", "age" => 25 }
+      ]
+    end
+
+    it "paginates in descending order by non-id column" do
+      2.times { |x| repo.insert(name: "jimbo", age: 20 + x) }
+      # Full dataset sorted by age desc: 25(id1), 21(id3), 20(id2)
+      page1 = repo.page(nil, 2, :age, :desc)
+      _(page1).must_equal [
+        { "id" => 1, "name" => "joe",   "age" => 25 },
+        { "id" => 3, "name" => "jimbo", "age" => 21 }
+      ]
+      page2 = repo.page(page1.last["id"], 2, :age, :desc)
+      _(page2).must_equal [
+        { "id" => 2, "name" => "jimbo", "age" => 20 }
+      ]
+    end
+
+    it "paginates with an additional where filter" do
+      2.times { |x| repo.insert(name: "jimbo", age: 20 + x) }
+      # Only jimbo rows sorted by age asc: 20(id2), 21(id3)
+      page1 = repo.page(nil, 1, :age, :asc, "name = ?", ["jimbo"])
+      _(page1).must_equal [{ "id" => 2, "name" => "jimbo", "age" => 20 }]
+      page2 = repo.page(page1.last["id"], 1, :age, :asc, "name = ?", ["jimbo"])
+      _(page2).must_equal [{ "id" => 3, "name" => "jimbo", "age" => 21 }]
+    end
   end
 end

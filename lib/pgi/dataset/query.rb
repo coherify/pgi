@@ -21,12 +21,12 @@ module PGI
         @order     = options.fetch(:order, {})
         @limit     = options.fetch(:limit, 10)
         @returning = options.fetch(:returning, nil)
-        raw_cursor = options.fetch(:cursor, { sort_col: :id, sort_val: 0, id_val: nil, dir: :asc })
+        raw_cursor = options.fetch(:cursor, { sort_col: :id, sort_val: 0, dir: :asc })
         @cursor    =
           case raw_cursor
           when Array
             sort_col, sort_val, dir = raw_cursor
-            { sort_col: sort_col, sort_val: sort_val, id_val: nil, dir: dir || :asc }
+            { sort_col: sort_col, sort_val: sort_val, dir: dir || :asc }
           else
             raw_cursor
           end
@@ -86,64 +86,20 @@ module PGI
         self
       end
 
-      # Set a cursor for keyset pagination
+      # Apply a keyset pagination cursor to this query. Called by Dataset#page.
+      # For sort_by == :id:    WHERE id > $cursor_id
+      # For sort_by != :id:    WHERE (sort_col, id) > (SELECT sort_col, id FROM table WHERE id = $cursor_id)
       #
-      # For single-column pagination (sort_by == :id):
-      #   cursor(:id, last_id)
-      # For composite pagination (sort_by != :id):
-      #   cursor(:name, last_name_val, last_id, :asc)
-      #   Generates: WHERE (sort_col, id) > ($1, $2) ORDER BY sort_col, id
-      #
-      # Disable with cursor(nil).
-      #
-      # @param sort_col [Symbol] the sort column. Disable cursor with .cursor(nil)
-      # @param sort_val [*] value of sort_col on the last seen row
-      # @param id_val [*] value of id on the last seen row (nil for single-column :id cursor)
-      # @param direction [Symbol] :asc or :desc
+      # @param sort_by [Symbol] the sort column
+      # @param cursor_id [*] id of the last row from the previous page
+      # @param sort_dir [Symbol] :asc or :desc
       # @return [Query] return the Query instance (for method chaining)
-      def cursor(sort_col, sort_val = nil, id_val = nil, direction = :asc)
-        @cursor =
-          if sort_col.nil?
-            nil
-          else
-            raise "cursor value cannot be nil" unless sort_val
-            raise "Invalid column name: #{sort_col}" unless Utils.valid_column?(sort_col)
-            raise "Invalid direction: #{direction}" unless %i[asc desc].include?(direction)
-
-            { sort_col: sort_col, sort_val: sort_val, id_val: id_val, dir: direction }
-          end
-        self
-      end
-
-      # Set a subquery-based composite cursor for keyset pagination when sort_by != :id.
-      # Keeps the cursor interface as a scalar id while generating globally-sorted pages:
-      #   WHERE (sort_col, id) > (SELECT sort_col, id FROM table WHERE id = $N)
-      # Requires a composite index on (sort_col, id) for efficient seeks.
-      #
-      # @param sort_col [Symbol] the sort column
-      # @param cursor_id [*] the id value of the last seen row (scalar)
-      # @param direction [Symbol] :asc or :desc
-      # @return [Query] return the Query instance (for method chaining)
-      def cursor_subquery(sort_col, cursor_id, direction = :asc)
-        raise "Invalid column name: #{sort_col}" unless Utils.valid_column?(sort_col)
-        raise "Invalid direction: #{direction}" unless %i[asc desc].include?(direction)
-        raise "cursor_id cannot be nil" unless cursor_id
-
-        sort_col_key = Utils.sanitize_columns(sort_col, @table)
-        sort_col_sql = sort_col_key.first
-        id_col_key   = Utils.sanitize_columns(:id, @table)
-        id_col_sql   = id_col_key.first
-        dir_op       = direction == :asc ? ">" : "<"
-
-        order(sort_col, direction) unless @order.key?(sort_col_key)
-        order(:id, direction) unless @order.key?(id_col_key)
-
-        @params << cursor_id
-        subq          = "SELECT #{sort_col_sql}, #{id_col_sql} FROM #{@table} WHERE #{id_col_sql} = $#{@params.size}"
-        cursor_clause = "(#{sort_col_sql}, #{id_col_sql}) #{dir_op} (#{subq})"
-        @cursor       = nil
-        @where        = @where ? "#{cursor_clause} AND (#{@where})" : cursor_clause
-
+      def with_cursor(sort_by, cursor_id, sort_dir)
+        if sort_by.to_sym == :id
+          set_id_cursor(cursor_id, sort_dir)
+        else
+          set_subquery_cursor(sort_by, cursor_id, sort_dir)
+        end
         self
       end
 
@@ -159,18 +115,7 @@ module PGI
 
             order(@cursor[:sort_col], @cursor[:dir]) unless @order.key?(sort_col_key)
 
-            cursor_clause =
-              if @cursor[:id_val]
-                # Composite: (sort_col, id) > ($N, $N+1)
-                id_col_key = Utils.sanitize_columns(:id, @table)
-                order(:id, @cursor[:dir]) unless @order.key?(id_col_key)
-                id_col_sql = id_col_key.first
-                "(#{sort_col_sql}, #{id_col_sql}) #{dir_op} ($#{@params.size + 1}, $#{@params.size + 2})"
-              else
-                # Single column: sort_col > $N
-                "#{sort_col_sql} #{dir_op} $#{@params.size + 1}"
-              end
-
+            cursor_clause = "#{sort_col_sql} #{dir_op} $#{@params.size + 1}"
             @where ? "#{cursor_clause} AND (#{@where})" : cursor_clause
           else
             @where
@@ -194,16 +139,15 @@ module PGI
       def params
         return @params unless @cursor
 
-        vals = [@cursor[:sort_val]]
-        vals << @cursor[:id_val] if @cursor[:id_val]
-        @params + vals
+        @params + [@cursor[:sort_val]]
       end
 
       # Get the first record in a result set
       #
       # @return [Hash]
       def first
-        limit(1).cursor(nil)
+        @cursor = nil
+        @limit  = 1
         @database
           .exec_stmt(Utils.stmt_name(@table, sql), sql, params)
           .first
@@ -251,7 +195,9 @@ module PGI
       # @return [Integer]
       def count
         @command = "SELECT COUNT(*) FROM #{@table}"
-        limit(1).cursor(nil)&.first&.fetch("count", 0)
+        @cursor  = nil
+        @limit   = 1
+        first&.fetch("count", 0)
       end
 
       # Get a string representation of the instance
@@ -261,6 +207,29 @@ module PGI
         "#<PGI::Dataset::Query:#{object_id} @sql=#{sql} @params=#{params}>"
       end
       alias inspect to_s
+
+      private
+
+      def set_id_cursor(cursor_id, direction)
+        @cursor = { sort_col: :id, sort_val: cursor_id, dir: direction }
+      end
+
+      def set_subquery_cursor(sort_col, cursor_id, direction)
+        sort_col_key = Utils.sanitize_columns(sort_col, @table)
+        sort_col_sql = sort_col_key.first
+        id_col_key   = Utils.sanitize_columns(:id, @table)
+        id_col_sql   = id_col_key.first
+        dir_op       = direction == :asc ? ">" : "<"
+
+        order(sort_col, direction) unless @order.key?(sort_col_key)
+        order(:id, direction) unless @order.key?(id_col_key)
+
+        @params << cursor_id
+        subq          = "SELECT #{sort_col_sql}, #{id_col_sql} FROM #{@table} WHERE #{id_col_sql} = $#{@params.size}"
+        cursor_clause = "(#{sort_col_sql}, #{id_col_sql}) #{dir_op} (#{subq})"
+        @cursor       = nil
+        @where        = @where ? "#{cursor_clause} AND (#{@where})" : cursor_clause
+      end
     end
   end
 end

@@ -87,58 +87,33 @@ describe PGI::Dataset::Query do
     end
   end
 
-  describe "#cursor" do
+  describe "#with_cursor" do
     it "generates a single-column cursor for :id" do
-      query.cursor(:id, 0).tap do |q|
+      query.with_cursor(:id, 0, :asc).tap do |q|
         _(q.sql).must_match(/"dataset"\."id" > \$1/)
         _(q.sql).must_match(/ORDER BY "dataset"\."id" ASC/)
         _(q.params).must_equal [0]
       end
     end
 
-    it "generates a composite cursor for non-id sort columns" do
-      query.cursor(:age, 21, 3).tap do |q|
-        _(q.sql).must_match(/\("dataset"\."age", "dataset"\."id"\) > \(\$1, \$2\)/)
-        _(q.sql).must_match(/ORDER BY "dataset"\."age" ASC, "dataset"\."id" ASC/)
-        _(q.params).must_equal [21, 3]
+    it "generates a single-column cursor for :id descending" do
+      query.with_cursor(:id, 5, :desc).tap do |q|
+        _(q.sql).must_match(/"dataset"\."id" < \$1/)
+        _(q.sql).must_match(/ORDER BY "dataset"\."id" DESC/)
+        _(q.params).must_equal [5]
       end
     end
 
-    it "generates a composite cursor in descending direction" do
-      query.cursor(:age, 21, 3, :desc).tap do |q|
-        _(q.sql).must_match(/\("dataset"\."age", "dataset"\."id"\) < \(\$1, \$2\)/)
-        _(q.sql).must_match(/ORDER BY "dataset"\."age" DESC, "dataset"\."id" DESC/)
-        _(q.params).must_equal [21, 3]
-      end
-    end
-
-    it "combines composite cursor with a WHERE clause" do
-      query.where(name: "joe").cursor(:age, 21, 3).tap do |q|
-        _(q.sql).must_match(/"dataset"\."name" = \$1/)
-        _(q.sql).must_match(/\("dataset"\."age", "dataset"\."id"\) > \(\$2, \$3\)/)
-        _(q.params).must_equal ["joe", 21, 3]
-      end
-    end
-
-    it "raises error on missing cursor value" do
-      e = assert_raises RuntimeError do
-        query.cursor(:id)
-      end
-      _(e.message).must_equal "cursor value cannot be nil"
-    end
-  end
-
-  describe "#cursor_subquery" do
-    it "generates a composite subquery cursor ascending" do
-      query.cursor_subquery(:age, 3).tap do |q|
-        _(q.sql).must_match(/\("dataset"\."age", "dataset"\."id"\) > \(SELECT "dataset"\."age", "dataset"\."id" FROM dataset WHERE "dataset"\."id" = \$1\)/)
+    it "generates a composite subquery cursor for non-id columns" do
+      query.with_cursor(:age, 3, :asc).tap do |q|
+        _(q.sql).must_match(/\("dataset"\."age", "dataset"\."id"\) > \(SELECT.*\$1\)/)
         _(q.sql).must_match(/ORDER BY "dataset"\."age" ASC, "dataset"\."id" ASC/)
         _(q.params).must_equal [3]
       end
     end
 
-    it "generates a composite subquery cursor descending" do
-      query.cursor_subquery(:age, 3, :desc).tap do |q|
+    it "generates a composite subquery cursor for non-id columns descending" do
+      query.with_cursor(:age, 3, :desc).tap do |q|
         _(q.sql).must_match(/\("dataset"\."age", "dataset"\."id"\) < \(SELECT.*\$1\)/)
         _(q.sql).must_match(/ORDER BY "dataset"\."age" DESC, "dataset"\."id" DESC/)
         _(q.params).must_equal [3]
@@ -146,7 +121,7 @@ describe PGI::Dataset::Query do
     end
 
     it "combines composite subquery cursor with a WHERE clause" do
-      query.where(name: "joe").cursor_subquery(:age, 3).tap do |q|
+      query.where(name: "joe").with_cursor(:age, 3, :asc).tap do |q|
         _(q.sql).must_match(/\("dataset"\."age", "dataset"\."id"\) > \(SELECT.*\$2\)/)
         _(q.sql).must_match(/"dataset"\."name" = \$1/)
         _(q.params).must_equal ["joe", 3]
@@ -187,7 +162,7 @@ describe PGI::Dataset::Query do
 
   describe "#to_s" do
     it "shows SQL and params on #to_s" do
-      obj_str = query.where(name: "joe").cursor(nil).to_s
+      obj_str = query.where(name: "joe").to_s
 
       _(obj_str).must_match(/@sql=SELECT \* FROM dataset WHERE "dataset"\."name" = \$1/)
       _(obj_str).must_match(/@params=\["joe"\]/)
