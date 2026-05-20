@@ -39,8 +39,11 @@ The `PGI::Dataset` is a super light weight ActiveRecord::Relation replacement. I
 * `#first` - get the first record in a set
 * `#all`- get an array of records
 * `#count`- get the number of rows in a table
-* `#sortable(:col, ...)` - declare which columns may be used as `sort_by` in `page()`; `:id` is always allowed
 * `#page(cursor, size, sort_by, sort_dir)` - keyset pagination; pass `nil` for the first page, then the **id of the last row** as the cursor for each subsequent page
+
+Configuration:
+
+* `sortable(:col, ...)` - declare which columns may be used as `sort_by` in `page()`; `:id` is always allowed
 
 ```ruby
 class Repository
