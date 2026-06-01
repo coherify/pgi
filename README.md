@@ -35,7 +35,6 @@ The `PGI::Dataset` is a super light weight ActiveRecord::Relation replacement. I
   * `#where(name: 'joe')` - as a Hash (multiple conditions will be concatenated with an ' AND ')
 * `#order(:column, <:asc|:desc>)` - sort result set by column and direction, can be invoked multiple times
 * `#limit(<num>)` - limits the result set to the specified number of records
-* `#with_cursor(sort_by, cursor_id, sort_dir)` - apply a keyset cursor to a Query; prefer `#page` for pagination
 * `#first` - get the first record in a set
 * `#all`- get an array of records
 * `#count`- get the number of rows in a table

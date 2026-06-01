@@ -96,7 +96,7 @@ module PGI
       # @return [Query] return the Query instance (for method chaining)
       def with_cursor(sort_by, cursor_id, sort_dir)
         if sort_by.to_sym == :id
-          set_id_cursor(cursor_id, sort_dir)
+          @cursor = { sort_col: :id, sort_val: cursor_id, dir: sort_dir }
         else
           set_subquery_cursor(sort_by, cursor_id, sort_dir)
         end
@@ -197,7 +197,10 @@ module PGI
         @command = "SELECT COUNT(*) FROM #{@table}"
         @cursor  = nil
         @limit   = 1
-        first&.fetch("count", 0)
+        @database
+          .exec_stmt(Utils.stmt_name(@table, sql), sql, params)
+          &.first
+          &.fetch("count", 0)
       end
 
       # Get a string representation of the instance
@@ -209,10 +212,6 @@ module PGI
       alias inspect to_s
 
       private
-
-      def set_id_cursor(cursor_id, direction)
-        @cursor = { sort_col: :id, sort_val: cursor_id, dir: direction }
-      end
 
       def set_subquery_cursor(sort_col, cursor_id, direction)
         sort_col_key = Utils.sanitize_columns(sort_col, @table)

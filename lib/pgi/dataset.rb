@@ -127,17 +127,7 @@ module PGI
 
     # Get a page of results using keyset pagination.
     #
-    # The cursor is always the scalar id of the last row from the previous page.
-    # Pass nil for the first page. For subsequent pages pass the id value of the
-    # last row returned.
-    #
-    # When sort_by == :id:    WHERE id > $cursor ORDER BY id
-    # When sort_by != :id:    WHERE (sort_col, id) > (SELECT sort_col, id FROM table WHERE id = $cursor)
-    #                         ORDER BY sort_col, id
-    #
-    # Requires a composite index on (sort_by, id) for optimal performance.
-    #
-    # @param cursor [*, nil] id of the last row from the previous page, or nil
+    # @param cursor [*, nil] id of the last row from the previous page, or nil for the first page
     # @param size [Integer] number of rows per page
     # @param sort_by [Symbol] column to sort by
     # @param sort_dir [Symbol] :asc or :desc
@@ -155,7 +145,7 @@ module PGI
         query.with_cursor(sort_by, cursor, sort_dir)
       else
         query.order(sort_by, sort_dir)
-        query.order(:id, sort_dir) unless sort_by == :id
+        query.order(:id, sort_dir) unless sort_by.to_sym == :id
       end
 
       _to_models query.to_a
