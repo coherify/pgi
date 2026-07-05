@@ -8,7 +8,7 @@ describe PGI::Dataset::Query do
   let(:migrator) { postgres_migrator(pg_conn) }
 
   def query
-    PGI::Dataset::Query.new(pg_conn, :dataset, nil, cursor: nil)
+    PGI::Dataset::Query.new(pg_conn, :dataset, nil)
   end
 
   before do
@@ -19,12 +19,6 @@ describe PGI::Dataset::Query do
   describe "#new" do
     it "returns the Query instance" do
       _(query.is_a?(PGI::Dataset::Query)).must_equal true
-    end
-
-    it "converts legacy array cursor format to hash" do
-      q = PGI::Dataset::Query.new(pg_conn, :dataset, nil, cursor: [:id, 0, :asc])
-      _(q.sql).must_match(/"dataset"\."id" > \$1/)
-      _(q.params).must_equal [0]
     end
   end
 
@@ -88,44 +82,45 @@ describe PGI::Dataset::Query do
   end
 
   describe "#with_cursor" do
-    it "generates a single-column cursor for :id" do
+    it "generates a scalar predicate for :id" do
       query.with_cursor(:id, 0, :asc).tap do |q|
-        _(q.sql).must_match(/"dataset"\."id" > \$1/)
-        _(q.sql).must_match(/ORDER BY "dataset"\."id" ASC/)
+        _(q.sql).must_match(/WHERE "dataset"\."id" > \$1/)
         _(q.params).must_equal [0]
       end
     end
 
-    it "generates a single-column cursor for :id descending" do
+    it "generates a scalar predicate for :id descending" do
       query.with_cursor(:id, 5, :desc).tap do |q|
-        _(q.sql).must_match(/"dataset"\."id" < \$1/)
-        _(q.sql).must_match(/ORDER BY "dataset"\."id" DESC/)
+        _(q.sql).must_match(/WHERE "dataset"\."id" < \$1/)
         _(q.params).must_equal [5]
       end
     end
 
-    it "generates a composite subquery cursor for non-id columns" do
+    it "generates a composite subquery predicate for non-id columns" do
       query.with_cursor(:age, 3, :asc).tap do |q|
-        _(q.sql).must_match(/\("dataset"\."age", "dataset"\."id"\) > \(SELECT.*\$1\)/)
-        _(q.sql).must_match(/ORDER BY "dataset"\."age" ASC, "dataset"\."id" ASC/)
+        _(q.sql).must_match(/WHERE \("dataset"\."age", "dataset"\."id"\) > \(SELECT "dataset"\."age", "dataset"\."id" FROM dataset WHERE "dataset"\."id" = \$1\)/)
         _(q.params).must_equal [3]
       end
     end
 
-    it "generates a composite subquery cursor for non-id columns descending" do
+    it "generates a composite subquery predicate for non-id columns descending" do
       query.with_cursor(:age, 3, :desc).tap do |q|
-        _(q.sql).must_match(/\("dataset"\."age", "dataset"\."id"\) < \(SELECT.*\$1\)/)
-        _(q.sql).must_match(/ORDER BY "dataset"\."age" DESC, "dataset"\."id" DESC/)
+        _(q.sql).must_match(/WHERE \("dataset"\."age", "dataset"\."id"\) < \(SELECT.*\$1\)/)
         _(q.params).must_equal [3]
       end
     end
 
-    it "combines composite subquery cursor with a WHERE clause" do
+    it "combines the cursor predicate with an existing WHERE clause" do
       query.where(name: "joe").with_cursor(:age, 3, :asc).tap do |q|
         _(q.sql).must_match(/\("dataset"\."age", "dataset"\."id"\) > \(SELECT.*\$2\)/)
         _(q.sql).must_match(/"dataset"\."name" = \$1/)
         _(q.params).must_equal ["joe", 3]
       end
+    end
+
+    it "raises on invalid direction" do
+      e = assert_raises(RuntimeError) { query.with_cursor(:id, 0, :sideways) }
+      _(e.message).must_equal "Invalid direction: :sideways"
     end
   end
 

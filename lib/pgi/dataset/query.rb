@@ -9,7 +9,7 @@ module PGI
       # @param database [PGI::DB] a configured instance of DB
       # @param table [Symbol] the name of the database table to operate on
       # @param command [String] the command part of the query (default: `SELECT * FROM <table>`)
-      # @param options [Hash] hash of options: scope, where, params, limit, order, returning, cursor
+      # @param options [Hash] hash of options: scope, where, params, limit, order, returning
       # @return [Query] new instance of Query
       def initialize(database, table, command, **options)
         @database  = database
@@ -21,15 +21,6 @@ module PGI
         @order     = options.fetch(:order, {})
         @limit     = options.fetch(:limit, 10)
         @returning = options.fetch(:returning, nil)
-        raw_cursor = options.fetch(:cursor, { sort_col: :id, sort_val: 0, dir: :asc })
-        @cursor    =
-          case raw_cursor
-          when Array
-            sort_col, sort_val, dir = raw_cursor
-            { sort_col: sort_col, sort_val: sort_val, dir: dir || :asc }
-          else
-            raw_cursor
-          end
       end
 
       # Adds a WHERE clause to the query
@@ -86,7 +77,9 @@ module PGI
         self
       end
 
-      # Apply a keyset pagination cursor to this query. Called by Dataset#page.
+      # Apply a keyset pagination cursor as a WHERE predicate. Combines with any
+      # existing WHERE clause, so call it after #where. Does not set ORDER BY —
+      # the caller (Dataset#page) orders by (sort_by, id) to match the predicate.
       # For sort_by == :id:    WHERE id > $cursor_id
       # For sort_by != :id:    WHERE (sort_col, id) > (SELECT sort_col, id FROM table WHERE id = $cursor_id)
       #
@@ -95,11 +88,21 @@ module PGI
       # @param sort_dir [Symbol] :asc or :desc
       # @return [Query] return the Query instance (for method chaining)
       def with_cursor(sort_by, cursor_id, sort_dir)
-        if sort_by.to_sym == :id
-          @cursor = { sort_col: :id, sort_val: cursor_id, dir: sort_dir }
-        else
-          set_subquery_cursor(sort_by, cursor_id, sort_dir)
-        end
+        raise "Invalid direction: #{sort_dir.inspect}" unless %i[asc desc].include?(sort_dir)
+
+        op     = sort_dir == :asc ? ">" : "<"
+        id_col = Utils.sanitize_columns(:id, @table).first
+        @params << cursor_id
+
+        clause =
+          if sort_by.to_sym == :id
+            "#{id_col} #{op} $#{@params.size}"
+          else
+            sort_col = Utils.sanitize_columns(sort_by, @table).first
+            "(#{sort_col}, #{id_col}) #{op} (SELECT #{sort_col}, #{id_col} FROM #{@table} WHERE #{id_col} = $#{@params.size})"
+          end
+
+        @where = @where ? "#{clause} AND (#{@where})" : clause
         self
       end
 
@@ -107,26 +110,12 @@ module PGI
       #
       # @return [String] Query as a SQL string
       def sql
-        clause =
-          if @cursor
-            dir_op       = @cursor[:dir] == :asc ? ">" : "<"
-            sort_col_key = Utils.sanitize_columns(@cursor[:sort_col], @table)
-            sort_col_sql = sort_col_key.first
-
-            order(@cursor[:sort_col], @cursor[:dir]) unless @order.key?(sort_col_key)
-
-            cursor_clause = "#{sort_col_sql} #{dir_op} $#{@params.size + 1}"
-            @where ? "#{cursor_clause} AND (#{@where})" : cursor_clause
-          else
-            @where
-          end
-
         # Simple Scope implementation
         scope = @scope.dup
-        scope << " AND " if scope && clause
+        scope << " AND " if scope && @where
 
         command = @command.dup
-        command << " WHERE #{scope}#{clause}" if clause || scope
+        command << " WHERE #{scope}#{@where}" if @where || scope
         command << " ORDER BY #{Array(@order).map { |x| x.join(" ") }.join(", ")}" unless @order.empty?
         command << " LIMIT #{@limit}" if @limit
         command << " RETURNING *" if @command =~ /^UPDATE|INSERT|DELETE/
@@ -136,18 +125,13 @@ module PGI
       # Get the params for placeholder substitution
       #
       # @return [Array] params
-      def params
-        return @params unless @cursor
-
-        @params + [@cursor[:sort_val]]
-      end
+      attr_reader :params
 
       # Get the first record in a result set
       #
       # @return [Hash]
       def first
-        @cursor = nil
-        @limit  = 1
+        limit(1)
         @database
           .exec_stmt(Utils.stmt_name(@table, sql), sql, params)
           .first
@@ -195,12 +179,7 @@ module PGI
       # @return [Integer]
       def count
         @command = "SELECT COUNT(*) FROM #{@table}"
-        @cursor  = nil
-        @limit   = 1
-        @database
-          .exec_stmt(Utils.stmt_name(@table, sql), sql, params)
-          &.first
-          &.fetch("count", 0)
+        first&.fetch("count", 0)
       end
 
       # Get a string representation of the instance
@@ -210,25 +189,6 @@ module PGI
         "#<PGI::Dataset::Query:#{object_id} @sql=#{sql} @params=#{params}>"
       end
       alias inspect to_s
-
-      private
-
-      def set_subquery_cursor(sort_col, cursor_id, direction)
-        sort_col_key = Utils.sanitize_columns(sort_col, @table)
-        sort_col_sql = sort_col_key.first
-        id_col_key   = Utils.sanitize_columns(:id, @table)
-        id_col_sql   = id_col_key.first
-        dir_op       = direction == :asc ? ">" : "<"
-
-        order(sort_col, direction) unless @order.key?(sort_col_key)
-        order(:id, direction) unless @order.key?(id_col_key)
-
-        @params << cursor_id
-        subq          = "SELECT #{sort_col_sql}, #{id_col_sql} FROM #{@table} WHERE #{id_col_sql} = $#{@params.size}"
-        cursor_clause = "(#{sort_col_sql}, #{id_col_sql}) #{dir_op} (#{subq})"
-        @cursor       = nil
-        @where        = @where ? "#{cursor_clause} AND (#{@where})" : cursor_clause
-      end
     end
   end
 end

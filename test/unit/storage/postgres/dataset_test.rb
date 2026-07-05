@@ -8,7 +8,7 @@ describe PGI::Dataset do
   let(:migrator) { postgres_migrator(pg_conn) }
   let(:repo) do
     Class.new do
-      extend PGI::Dataset[PG_CONN, :dataset, cursor: nil, scope: "id > 0"]
+      extend PGI::Dataset[PG_CONN, :dataset, scope: "id > 0"]
 
       class << self
         attr_accessor :pg_conn
@@ -136,29 +136,6 @@ describe PGI::Dataset do
   describe "#count" do
     it "returns number of rows in table" do
       _(repo.count).must_equal 1
-    end
-  end
-
-  describe "#sortable" do
-    it "allows declared columns in page()" do
-      repo.sortable :age
-      _(proc { repo.page(nil, 2, :age, :asc) }).must_be_silent
-    end
-
-    it "allows :id regardless of whitelist" do
-      repo.sortable :age
-      _(proc { repo.page(nil, 2, :id, :asc) }).must_be_silent
-    end
-
-    it "raises on undeclared sort column" do
-      repo.sortable :age
-      e = assert_raises(RuntimeError) { repo.page(nil, 2, :name, :asc) }
-      _(e.message).must_match(/Cannot sort by :name/)
-      _(e.message).must_match(/sortable :name/)
-    end
-
-    it "does not restrict when sortable is not declared" do
-      _(proc { repo.page(nil, 2, :name, :asc) }).must_be_silent
     end
   end
 

@@ -40,22 +40,14 @@ The `PGI::Dataset` is a super light weight ActiveRecord::Relation replacement. I
 * `#count`- get the number of rows in a table
 * `#page(cursor, size, sort_by, sort_dir)` - keyset pagination; pass `nil` for the first page, then the **id of the last row** as the cursor for each subsequent page
 
-Configuration:
-
-* `sortable(:col, ...)` - declare which columns may be used as `sort_by` in `page()`; `:id` is always allowed
-
 ```ruby
 class Repository
-  extend PGI::Dataset[DB, :members, cursor: nil, scope: "deleted_at IS NULL"]
-
-  # Declare sortable columns — each one requires a composite index on (column, id).
-  # :id is always sortable and does not need to be listed here.
-  sortable :name, :created_at
+  extend PGI::Dataset[DB, :members, scope: "deleted_at IS NULL"]
 end
 ```
 
 ```sql
--- Create a composite index for each sortable column.
+-- Each column used as sort_by in page() needs a composite index on (column, id).
 -- Two separate single-column indexes are not sufficient — Postgres needs
 -- the combined (column, id) ordering to seek directly to the cursor position.
 CREATE INDEX ON members (name ASC, id ASC);
@@ -68,11 +60,6 @@ page1 = Repository.page(nil, 20, :name, :asc)
 
 # Next page — pass the id of the last row as the cursor
 page2 = Repository.page(page1.last["id"], 20, :name, :asc)
-
-# Attempting to sort by a column not in the whitelist raises immediately:
-Repository.page(nil, 20, :email, :asc)
-# => RuntimeError: Cannot sort by :email — not declared as sortable.
-#    Add `sortable :email` and create a composite index (email, id).
 ```
 
 Generated SQL for page 2 (`sort_by != :id`):
@@ -106,8 +93,6 @@ LIMIT 20
   Postgres resolves the subquery via the primary-key index (a single fast lookup), then uses the composite `(sort_col, id)` index to seek directly to that position and scan forward. The two separate single-column indexes are not equivalent — a composite B-tree index is required so that Postgres can seek to an exact `(sort_col, id)` position rather than scanning and filtering.
 
 `LIMIT/OFFSET` scans and discards all prior rows on every page request — cost grows linearly with depth. Keyset pagination does not.
-
-If `sortable` is never called, the column whitelist is not enforced and any column is accepted.
 
 ## Documentation
 

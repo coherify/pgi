@@ -42,7 +42,7 @@ module PGI
           " (#{params.columns.join(", ")}) VALUES (#{params.indexs.join(", ")}) "
         end
 
-      _to_model Query.new(@database, @table, command, params: params.values, cursor: nil).limit(nil).to_a.first
+      _to_model Query.new(@database, @table, command, params: params.values).limit(nil).to_a.first
     end
 
     # Update row
@@ -76,7 +76,7 @@ module PGI
     # @return [Model,Hash]
     def delete(id)
       command = "DELETE FROM #{@table}"
-      _to_model Query.new(@database, @table, command, **@options, cursor: nil).where(id: id).limit(nil).to_a.first
+      _to_model Query.new(@database, @table, command, **@options).where(id: id).limit(nil).to_a.first
     end
 
     # Get a row by its id
@@ -108,16 +108,6 @@ module PGI
       _to_model where.order(sort_by.to_sym, :desc).first
     end
 
-    # Declare which columns may be used as sort_by in page().
-    # Each listed column must have a composite index on (column, id).
-    # :id is always sortable and does not need to be listed.
-    # If sortable is never called, any column is accepted (no enforcement).
-    #
-    # @param columns [Symbol, ...] sortable column names
-    def sortable(*columns)
-      @sortable_columns = columns.map(&:to_sym)
-    end
-
     # Get number of rows
     #
     # @return [Integer] number of rows in the table
@@ -127,6 +117,9 @@ module PGI
 
     # Get a page of results using keyset pagination.
     #
+    # Sorting by a column other than :id requires a composite index on
+    # (sort_by, id) for seek performance — see README.
+    #
     # @param cursor [*, nil] id of the last row from the previous page, or nil for the first page
     # @param size [Integer] number of rows per page
     # @param sort_by [Symbol] column to sort by
@@ -134,19 +127,10 @@ module PGI
     # @param where [Array] optional WHERE clause forwarded to Query#where
     # @return [Array] list of Models or Hashes
     def page(cursor = nil, size = 10, sort_by = :id, sort_dir = :asc, *where)
-      if @sortable_columns && sort_by.to_sym != :id && !@sortable_columns.include?(sort_by.to_sym)
-        raise "Cannot sort by :#{sort_by} — not declared as sortable. " \
-              "Add `sortable :#{sort_by}` and create a composite index (#{sort_by}, id)."
-      end
-
-      query = Query.new(@database, @table, nil, **@options, cursor: nil).where(*where).limit(size)
-
-      if cursor
-        query.with_cursor(sort_by, cursor, sort_dir)
-      else
-        query.order(sort_by, sort_dir)
-        query.order(:id, sort_dir) unless sort_by.to_sym == :id
-      end
+      query = Query.new(@database, @table, nil, **@options).where(*where).limit(size)
+      query.order(sort_by, sort_dir)
+      query.order(:id, sort_dir) unless sort_by.to_sym == :id
+      query.with_cursor(sort_by, cursor, sort_dir) if cursor
 
       _to_models query.to_a
     end
