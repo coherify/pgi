@@ -27,7 +27,7 @@ jobs:
       PG_CONN_URI: postgresql://pgi:password@127.0.0.1:5432/pgi_test
     steps:
     - name: Checkout source Code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v6
     - name: Setup PostgreSQL server
       uses: harmon758/postgresql-action@v1
       with:

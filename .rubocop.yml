@@ -10,7 +10,7 @@
 # See https://docs.rubocop.org/rubocop/configuration
 
 AllCops:
-  TargetRubyVersion: 3.4
+  TargetRubyVersion: 4.0
   SuggestExtensions: false
   NewCops: enable
 
@@ -53,8 +53,8 @@ Naming/VariableNumber:
 Style/BlockComments:
   Enabled: false
 
-# Style/CollectionQuerying:
-#   Enabled: false
+Style/CollectionQuerying:
+  Enabled: false
 
 Style/Documentation:
   Enabled: false
@@ -76,4 +76,3 @@ Style/StringLiterals:
 
 Style/StringLiteralsInInterpolation:
   EnforcedStyle: double_quotes
-
