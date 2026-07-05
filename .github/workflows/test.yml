@@ -43,6 +43,4 @@ jobs:
     - name: Run tests
       run: bundle exec rake test:spec
     - name: Run style check
-      run: |
-        curl -s http://coherify.net/development/rubocop.yml --output .rubocop.yml
-        bundle exec rake test:rubocop
+      run: bundle exec rake test:rubocop
