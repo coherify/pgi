@@ -24,6 +24,7 @@ jobs:
     env:
       APP_ENV: test
       RACK_ENV: test
+      PG_CONN_URI: postgresql://pgi:password@127.0.0.1:5432/pgi_test
     steps:
     - name: Checkout source Code
       uses: actions/checkout@v3
