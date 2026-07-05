@@ -108,7 +108,7 @@ describe PGI::DB do
   end
 
   it "relays missing methods to PG connection" do
-    _(subject.host).must_equal "postgres"
+    _(subject.db).must_equal "pgi_test"
   end
 
   it "responds to PG::Connection methods" do
