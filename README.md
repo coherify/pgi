@@ -35,34 +35,64 @@ The `PGI::Dataset` is a super light weight ActiveRecord::Relation replacement. I
   * `#where(name: 'joe')` - as a Hash (multiple conditions will be concatenated with an ' AND ')
 * `#order(:column, <:asc|:desc>)` - sort result set by column and direction, can be invoked multiple times
 * `#limit(<num>)` - limits the result set to the specified number of records
-* `#cursor(column: offset)` - provides a mechanism for keyset pagination. Defaults to `{ id: 0 }`
 * `#first` - get the first record in a set
 * `#all`- get an array of records
 * `#count`- get the number of rows in a table
-* `#page(:offset, :size, **where)`- get a "page" of rows of some size from some offset
+* `#page(cursor, size, sort_by, sort_dir)` - keyset pagination; pass `nil` for the first page, then the **id of the last row** as the cursor for each subsequent page
 
 ```ruby
 class Repository
-  extend PGI::Dataset[DB, :table, cursor: { id: 0 }, scope: "age >= 21"]
+  extend PGI::Dataset[DB, :members, scope: "deleted_at IS NULL"]
 end
-
-# Select an entire row from a table
-Repository
-  .where(name: "joe")
-  .order(:age, :asc)
-  .limit(3)
-  .cursor(id: 3)
-# "SELECT * FROM table WHERE id > $2 AND (column = $1) ORDER BY age ASC LIMIT 3", params["joe", 3]
-
-# Select only some columns from a table
-Repository
-  .select(:name)
-  .where(name: "jane")
-  .order(:age, :desc)
-  .limit(5)
-  .cursor(id: 2)
-# "SELECT name FROM table WHERE id > $2 AND (column = $1) ORDER BY age DESC LIMIT 5", params["jane", 2]
 ```
+
+```sql
+-- Each column used as sort_by in page() needs a composite index on (column, id).
+-- Two separate single-column indexes are not sufficient — Postgres needs
+-- the combined (column, id) ordering to seek directly to the cursor position.
+CREATE INDEX ON members (name ASC, id ASC);
+CREATE INDEX ON members (created_at ASC, id ASC);
+```
+
+```ruby
+# First page — sorted by name
+page1 = Repository.page(nil, 20, :name, :asc)
+
+# Next page — pass the id of the last row as the cursor
+page2 = Repository.page(page1.last["id"], 20, :name, :asc)
+```
+
+Generated SQL for page 2 (`sort_by != :id`):
+```sql
+SELECT * FROM members
+WHERE deleted_at IS NULL
+  AND (name, id) > (SELECT name, id FROM members WHERE id = $1)
+ORDER BY name ASC, id ASC
+LIMIT 20
+```
+
+Generated SQL for page 2 (`sort_by == :id`):
+```sql
+SELECT * FROM members
+WHERE deleted_at IS NULL
+  AND id > $1
+ORDER BY id ASC
+LIMIT 20
+```
+
+### How keyset pagination works
+
+`#page` fetches rows at constant cost regardless of page depth. The cursor is always the scalar `id` of the last row from the previous page.
+
+- **Sorting by id** — `WHERE id > $cursor ORDER BY id`. Simple seek on the primary key index.
+- **Sorting by another column** — generates a composite subquery cursor so pages are globally sorted:
+  ```sql
+  WHERE (sort_col, id) > (SELECT sort_col, id FROM table WHERE id = $cursor)
+  ORDER BY sort_col, id
+  ```
+  Postgres resolves the subquery via the primary-key index (a single fast lookup), then uses the composite `(sort_col, id)` index to seek directly to that position and scan forward. The two separate single-column indexes are not equivalent — a composite B-tree index is required so that Postgres can seek to an exact `(sort_col, id)` position rather than scanning and filtering.
+
+`LIMIT/OFFSET` scans and discards all prior rows on every page request — cost grows linearly with depth. Keyset pagination does not.
 
 ## Documentation
 

@@ -9,7 +9,7 @@ module PGI
       # @param database [PGI::DB] a configured instance of DB
       # @param table [Symbol] the name of the database table to operate on
       # @param command [String] the command part of the query (default: `SELECT * FROM <table>`)
-      # @param options [Hash] hash of options: scope, where, params, limit, order, returning, cursor
+      # @param options [Hash] hash of options: scope, where, params, limit, order, returning
       # @return [Query] new instance of Query
       def initialize(database, table, command, **options)
         @database  = database
@@ -21,7 +21,6 @@ module PGI
         @order     = options.fetch(:order, {})
         @limit     = options.fetch(:limit, 10)
         @returning = options.fetch(:returning, nil)
-        @cursor    = options.fetch(:cursor, [:id, 0, :asc])
       end
 
       # Adds a WHERE clause to the query
@@ -78,24 +77,32 @@ module PGI
         self
       end
 
-      # Set a cursor for keyset pagination
+      # Apply a keyset pagination cursor as a WHERE predicate. Combines with any
+      # existing WHERE clause, so call it after #where. Does not set ORDER BY —
+      # the caller (Dataset#page) orders by (sort_by, id) to match the predicate.
+      # For sort_by == :id:    WHERE id > $cursor_id
+      # For sort_by != :id:    WHERE (sort_col, id) > (SELECT sort_col, id FROM table WHERE id = $cursor_id)
       #
-      # @see Query#limit for setting a page size
-      # @param column [Symbol] the column to use for pagination (default: `:id`). Disable cursor with .cursor(nil)
-      # @param offset [*] the row offset for pagination - cannot be nil if column is not nil
-      # @param direction [Symbol] the direction the sort should take - can be either `:desc` or `:asc`
+      # @param sort_by [Symbol] the sort column
+      # @param cursor_id [*] id of the last row from the previous page
+      # @param sort_dir [Symbol] :asc or :desc
       # @return [Query] return the Query instance (for method chaining)
-      def cursor(column, offset = nil, direction = :asc)
-        @cursor =
-          if column.nil?
-            nil
-          else
-            raise "offset cannot be nil" unless offset
-            raise "Invalid column name: #{column}" unless Utils.valid_column?(column)
-            raise "Invalid direction: #{direction}" unless %i[asc desc].include?(direction)
+      def with_cursor(sort_by, cursor_id, sort_dir)
+        raise "Invalid direction: #{sort_dir.inspect}" unless %i[asc desc].include?(sort_dir)
 
-            [column, offset, direction]
+        op     = sort_dir == :asc ? ">" : "<"
+        id_col = Utils.sanitize_columns(:id, @table).first
+        @params << cursor_id
+
+        clause =
+          if sort_by.to_sym == :id
+            "#{id_col} #{op} $#{@params.size}"
+          else
+            sort_col = Utils.sanitize_columns(sort_by, @table).first
+            "(#{sort_col}, #{id_col}) #{op} (SELECT #{sort_col}, #{id_col} FROM #{@table} WHERE #{id_col} = $#{@params.size})"
           end
+
+        @where = @where ? "#{clause} AND (#{@where})" : clause
         self
       end
 
@@ -103,27 +110,12 @@ module PGI
       #
       # @return [String] Query as a SQL string
       def sql
-        clause =
-          if @cursor
-            # Append order by cursor
-            order(@cursor[0], @cursor[2])
-            cursor_dir = @cursor[2] == :asc ? ">" : "<"
-
-            if @where
-              "#{Utils.sanitize_columns(@cursor[0], @table).first} #{cursor_dir} $#{@params.size + 1} AND (#{@where})"
-            else
-              "#{Utils.sanitize_columns(@cursor[0], @table).first} #{cursor_dir} $#{@params.size + 1}"
-            end
-          else
-            @where
-          end
-
         # Simple Scope implementation
         scope = @scope.dup
-        scope << " AND " if scope && clause
+        scope << " AND " if scope && @where
 
         command = @command.dup
-        command << " WHERE #{scope}#{clause}" if clause || scope
+        command << " WHERE #{scope}#{@where}" if @where || scope
         command << " ORDER BY #{Array(@order).map { |x| x.join(" ") }.join(", ")}" unless @order.empty?
         command << " LIMIT #{@limit}" if @limit
         command << " RETURNING *" if @command =~ /^UPDATE|INSERT|DELETE/
@@ -133,15 +125,13 @@ module PGI
       # Get the params for placeholder substitution
       #
       # @return [Array] params
-      def params
-        ((cur = @cursor&.flatten) && (@params + [cur[1]])) || @params
-      end
+      attr_reader :params
 
       # Get the first record in a result set
       #
       # @return [Hash]
       def first
-        limit(1).cursor(nil)
+        limit(1)
         @database
           .exec_stmt(Utils.stmt_name(@table, sql), sql, params)
           .first
@@ -189,7 +179,7 @@ module PGI
       # @return [Integer]
       def count
         @command = "SELECT COUNT(*) FROM #{@table}"
-        limit(1).cursor(nil)&.first&.fetch("count", 0)
+        first&.fetch("count", 0)
       end
 
       # Get a string representation of the instance

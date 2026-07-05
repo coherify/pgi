@@ -8,7 +8,7 @@ describe PGI::Dataset::Query do
   let(:migrator) { postgres_migrator(pg_conn) }
 
   def query
-    PGI::Dataset::Query.new(pg_conn, :dataset, nil, cursor: nil)
+    PGI::Dataset::Query.new(pg_conn, :dataset, nil)
   end
 
   before do
@@ -81,29 +81,46 @@ describe PGI::Dataset::Query do
     end
   end
 
-  describe "#cursor" do
-    it "set a keyset pagination cursor" do
-      query.cursor(:id, 0).tap do |q|
-        _(q.sql).must_match(/"dataset"\."id" > \$1/)
-        _(q.sql).must_match(/ORDER BY "dataset"\."id" ASC/)
+  describe "#with_cursor" do
+    it "generates a scalar predicate for :id" do
+      query.with_cursor(:id, 0, :asc).tap do |q|
+        _(q.sql).must_match(/WHERE "dataset"\."id" > \$1/)
         _(q.params).must_equal [0]
       end
     end
 
-    it "combines keyset pagination with a WHERE clause" do
-      query.where(name: "joe").cursor(:id, 0).tap do |q|
-        _(q.sql).must_match(/"dataset"\."name" = \$1/)
-        _(q.sql).must_match(/"dataset"\."id" > \$2/)
-        _(q.sql).must_match(/ORDER BY "dataset"\."id" ASC/)
-        _(q.params).must_equal ["joe", 0]
+    it "generates a scalar predicate for :id descending" do
+      query.with_cursor(:id, 5, :desc).tap do |q|
+        _(q.sql).must_match(/WHERE "dataset"\."id" < \$1/)
+        _(q.params).must_equal [5]
       end
     end
 
-    it "raises error on missing offset" do
-      e = assert_raises RuntimeError do
-        query.cursor(:id)
+    it "generates a composite subquery predicate for non-id columns" do
+      query.with_cursor(:age, 3, :asc).tap do |q|
+        _(q.sql).must_match(/WHERE \("dataset"\."age", "dataset"\."id"\) > \(SELECT "dataset"\."age", "dataset"\."id" FROM dataset WHERE "dataset"\."id" = \$1\)/)
+        _(q.params).must_equal [3]
       end
-      _(e.message).must_equal "offset cannot be nil"
+    end
+
+    it "generates a composite subquery predicate for non-id columns descending" do
+      query.with_cursor(:age, 3, :desc).tap do |q|
+        _(q.sql).must_match(/WHERE \("dataset"\."age", "dataset"\."id"\) < \(SELECT.*\$1\)/)
+        _(q.params).must_equal [3]
+      end
+    end
+
+    it "combines the cursor predicate with an existing WHERE clause" do
+      query.where(name: "joe").with_cursor(:age, 3, :asc).tap do |q|
+        _(q.sql).must_match(/\("dataset"\."age", "dataset"\."id"\) > \(SELECT.*\$2\)/)
+        _(q.sql).must_match(/"dataset"\."name" = \$1/)
+        _(q.params).must_equal ["joe", 3]
+      end
+    end
+
+    it "raises on invalid direction" do
+      e = assert_raises(RuntimeError) { query.with_cursor(:id, 0, :sideways) }
+      _(e.message).must_equal "Invalid direction: :sideways"
     end
   end
 
@@ -140,7 +157,7 @@ describe PGI::Dataset::Query do
 
   describe "#to_s" do
     it "shows SQL and params on #to_s" do
-      obj_str = query.where(name: "joe").cursor(nil).to_s
+      obj_str = query.where(name: "joe").to_s
 
       _(obj_str).must_match(/@sql=SELECT \* FROM dataset WHERE "dataset"\."name" = \$1/)
       _(obj_str).must_match(/@params=\["joe"\]/)

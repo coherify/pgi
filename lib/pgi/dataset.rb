@@ -42,7 +42,7 @@ module PGI
           " (#{params.columns.join(", ")}) VALUES (#{params.indexs.join(", ")}) "
         end
 
-      _to_model Query.new(@database, @table, command, params: params.values).limit(nil).cursor(nil).to_a.first
+      _to_model Query.new(@database, @table, command, params: params.values).limit(nil).to_a.first
     end
 
     # Update row
@@ -65,7 +65,7 @@ module PGI
                 "WHERE #{id_param.column} = #{id_param.index} RETURNING *"
 
       # TODO: Query throws `PG::IndeterminateDatatype: ERROR:  could not determine data type of parameter $2`
-      # _to_model Query.new(@database, @table, command, params: params).where(id: id).limit(nil).cursor(nil)
+      # _to_model Query.new(@database, @table, command, params: params).where(id: id).limit(nil)
 
       _to_model @database.exec_stmt(Utils.stmt_name(@table, command), command, params.values)&.first
     end
@@ -76,7 +76,7 @@ module PGI
     # @return [Model,Hash]
     def delete(id)
       command = "DELETE FROM #{@table}"
-      _to_model Query.new(@database, @table, command, **@options).where(id: id).limit(nil).cursor(nil).to_a.first
+      _to_model Query.new(@database, @table, command, **@options).where(id: id).limit(nil).to_a.first
     end
 
     # Get a row by its id
@@ -84,7 +84,7 @@ module PGI
     # @param id [*] ID of row
     # @return [Model,Hash]
     def find(id)
-      _to_model Query.new(@database, @table, nil, **@options).where(id: id).cursor(nil).first
+      _to_model Query.new(@database, @table, nil, **@options).where(id: id).first
     end
 
     # Get all rows
@@ -98,14 +98,14 @@ module PGI
     #
     # @return [Model,Hash]
     def first(sort_by = :id)
-      _to_model where.order(sort_by.to_sym, :asc).limit(1).cursor(nil).first
+      _to_model where.order(sort_by.to_sym, :asc).first
     end
 
     # Get last row by column (default: :id)
     #
     # @return [Model,Hash]
     def last(sort_by = :id)
-      _to_model where.order(sort_by.to_sym, :desc).limit(1).cursor(nil).first
+      _to_model where.order(sort_by.to_sym, :desc).first
     end
 
     # Get number of rows
@@ -115,19 +115,22 @@ module PGI
       Query.new(@database, @table, nil, **@options).count
     end
 
-    # Get a page (keyset pagination)
+    # Get a page of results using keyset pagination.
     #
-    # @param cursor [*] the page cursor
-    # @param size [Integer] the page size
-    # @param sort_by [Symbol] the column to sort by
-    # @param sort_dir [Symbol] the direction to sort by
-    # @param where [Array] an optional WHERE clause
-    # @return [Array] list of Models, Hashes
+    # Sorting by a column other than :id requires a composite index on
+    # (sort_by, id) for seek performance — see README.
+    #
+    # @param cursor [*, nil] id of the last row from the previous page, or nil for the first page
+    # @param size [Integer] number of rows per page
+    # @param sort_by [Symbol] column to sort by
+    # @param sort_dir [Symbol] :asc or :desc
+    # @param where [Array] optional WHERE clause forwarded to Query#where
+    # @return [Array] list of Models or Hashes
     def page(cursor = nil, size = 10, sort_by = :id, sort_dir = :asc, *where)
-      query = Query.new(@database, @table, nil, **@options)
-      query = query.where(*where)
-      query = cursor ? query.cursor(sort_by, cursor, sort_dir) : query.cursor(nil).order(sort_by, sort_dir)
-      query = query.limit(size)
+      query = Query.new(@database, @table, nil, **@options).where(*where).limit(size)
+      query.order(sort_by, sort_dir)
+      query.order(:id, sort_dir) unless sort_by.to_sym == :id
+      query.with_cursor(sort_by, cursor, sort_dir) if cursor
 
       _to_models query.to_a
     end

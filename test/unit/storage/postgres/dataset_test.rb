@@ -8,7 +8,7 @@ describe PGI::Dataset do
   let(:migrator) { postgres_migrator(pg_conn) }
   let(:repo) do
     Class.new do
-      extend PGI::Dataset[PG_CONN, :dataset, cursor: nil, scope: "id > 0"]
+      extend PGI::Dataset[PG_CONN, :dataset, scope: "id > 0"]
 
       class << self
         attr_accessor :pg_conn
@@ -140,14 +140,69 @@ describe PGI::Dataset do
   end
 
   describe "#page" do
-    it "returns a paginated result" do
+    it "paginates forward by id" do
       3.times { |x| repo.insert(name: "jimbo", age: 20 + x) }
-      _(repo.page(nil, 1, :id, :asc)).must_equal [{ "id" => 1, "name" => "joe", "age" => 25 }]
-      _(repo.page(nil, 1, :id, :desc)).must_equal [{ "id" => 4, "name" => "jimbo", "age" => 22 }]
-      _(repo.page(1, 1)).must_equal [{ "id" => 2, "name" => "jimbo", "age" => 20 }]
-      _(repo.page(2, 1)).must_equal [{ "id" => 3, "name" => "jimbo", "age" => 21 }]
-      _(repo.page(4, 1, :id, :desc)).must_equal [{ "id" => 3, "name" => "jimbo", "age" => 21 }]
-      _(repo.page(3, 1, :id, :desc)).must_equal [{ "id" => 2, "name" => "jimbo", "age" => 20 }]
+      page1 = repo.page(nil, 2)
+      _(page1).must_equal [
+        { "id" => 1, "name" => "joe",   "age" => 25 },
+        { "id" => 2, "name" => "jimbo", "age" => 20 }
+      ]
+      page2 = repo.page(page1.last["id"], 2)
+      _(page2).must_equal [
+        { "id" => 3, "name" => "jimbo", "age" => 21 },
+        { "id" => 4, "name" => "jimbo", "age" => 22 }
+      ]
+    end
+
+    it "paginates a globally sorted list via composite subquery cursor" do
+      3.times { |x| repo.insert(name: "jimbo", age: 20 + x) }
+      # Full dataset sorted by age asc: 20(id2), 21(id3), 22(id4), 25(id1)
+      page1 = repo.page(nil, 2, :age, :asc)
+      _(page1).must_equal [
+        { "id" => 2, "name" => "jimbo", "age" => 20 },
+        { "id" => 3, "name" => "jimbo", "age" => 21 }
+      ]
+      page2 = repo.page(page1.last["id"], 2, :age, :asc)
+      _(page2).must_equal [
+        { "id" => 4, "name" => "jimbo", "age" => 22 },
+        { "id" => 1, "name" => "joe",   "age" => 25 }
+      ]
+    end
+
+    it "paginates in descending order by id" do
+      2.times { |x| repo.insert(name: "jimbo", age: 20 + x) }
+      page1 = repo.page(nil, 2, :id, :desc)
+      _(page1).must_equal [
+        { "id" => 3, "name" => "jimbo", "age" => 21 },
+        { "id" => 2, "name" => "jimbo", "age" => 20 }
+      ]
+      page2 = repo.page(page1.last["id"], 2, :id, :desc)
+      _(page2).must_equal [
+        { "id" => 1, "name" => "joe", "age" => 25 }
+      ]
+    end
+
+    it "paginates in descending order by non-id column" do
+      2.times { |x| repo.insert(name: "jimbo", age: 20 + x) }
+      # Full dataset sorted by age desc: 25(id1), 21(id3), 20(id2)
+      page1 = repo.page(nil, 2, :age, :desc)
+      _(page1).must_equal [
+        { "id" => 1, "name" => "joe",   "age" => 25 },
+        { "id" => 3, "name" => "jimbo", "age" => 21 }
+      ]
+      page2 = repo.page(page1.last["id"], 2, :age, :desc)
+      _(page2).must_equal [
+        { "id" => 2, "name" => "jimbo", "age" => 20 }
+      ]
+    end
+
+    it "paginates with an additional where filter" do
+      2.times { |x| repo.insert(name: "jimbo", age: 20 + x) }
+      # Only jimbo rows sorted by age asc: 20(id2), 21(id3)
+      page1 = repo.page(nil, 1, :age, :asc, "name = ?", ["jimbo"])
+      _(page1).must_equal [{ "id" => 2, "name" => "jimbo", "age" => 20 }]
+      page2 = repo.page(page1.last["id"], 1, :age, :asc, "name = ?", ["jimbo"])
+      _(page2).must_equal [{ "id" => 3, "name" => "jimbo", "age" => 21 }]
     end
   end
 end
