@@ -30,7 +30,7 @@ jobs:
     - name: Setup PostgreSQL server
       uses: harmon758/postgresql-action@v1
       with:
-        postgresql version: '14'
+        postgresql version: '18'
         postgresql db: pgi_test
         postgresql user: pgi
         postgresql password: password
@@ -40,7 +40,7 @@ jobs:
         ruby-version: ${{ matrix.ruby }}
         bundler-cache: true
     - name: Run tests
-      run: bundle exec rake test:specs
+      run: bundle exec rake test:spec
     - name: Run style check
       run: |
         curl -s http://coherify.net/development/rubocop.yml --output .rubocop.yml
