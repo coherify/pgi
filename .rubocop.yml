@@ -10,7 +10,7 @@
 # See https://docs.rubocop.org/rubocop/configuration
 
 AllCops:
-  TargetRubyVersion: 4.0
+  TargetRubyVersion: 3.4
   SuggestExtensions: false
   NewCops: enable
 
