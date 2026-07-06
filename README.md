@@ -17,7 +17,7 @@ DB = PGI::DB.configure do |options|
   options.pool_timeout = 5
   options.pg_conn_uri = "postgresql://pgi:password@localhost:5432/pgi_test"
   options.logger = Logger.new($stdout)
-  options.max_retries = 10 # optional (default: 10) - shared retry budget for lost connections
+  options.max_retries = 30 # optional (default: 30, ~1 min of patience) - shared retry budget for lost connections
                            # and pool checkout timeouts; Float::INFINITY rides out any outage
   options.retry_wait = 2   # optional (default: 2) - seconds between reconnection attempts
 end

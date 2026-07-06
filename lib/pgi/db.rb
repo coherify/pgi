@@ -13,7 +13,7 @@ module PGI
     # @param max_retries [Integer, Float] shared retry budget for lost connections and pool
     #   checkout timeouts - use Float::INFINITY to ride out arbitrarily long outages
     # @param retry_wait [Numeric] seconds to sleep between reconnection attempts
-    def initialize(pool, logger, max_retries: 10, retry_wait: 2)
+    def initialize(pool, logger, max_retries: 30, retry_wait: 2)
       @pool        = pool
       @logger      = logger
       @max_retries = max_retries
