@@ -30,9 +30,9 @@ DB.exec_stmt("my_stmt", "SELECT 1+1")
 The `PGI::Dataset` is a super light weight ActiveRecord::Relation replacement. It delivers a clean and simple querying interface:
 
 * `#select(column1, ...)` allows you to limit the result set to only contain specified columns
-* `#where(...)` - can be invoked in two ways:
-  * `#where("name = $1", ['joe'])` - the classic ruby PG named paremeters
-  * `#where(name: 'joe')` - as a Hash (multiple conditions will be concatenated with an ' AND ')
+* `#where(...)` - can only be called once per query, so combine all conditions in a single call. Two forms:
+  * `#where("name = ? AND age > ?", ['joe', 21])` - a string clause with placeholders (`?` or `$1`)
+  * `#where(name: 'joe')` - as a Hash (multiple keys are concatenated with an ' AND ')
 * `#order(:column, <:asc|:desc>)` - sort result set by column and direction, can be invoked multiple times
 * `#limit(<num>)` - limits the result set to the specified number of records
 * `#first` - get the first record in a set
@@ -93,6 +93,12 @@ LIMIT 20
   Postgres resolves the subquery via the primary-key index (a single fast lookup), then uses the composite `(sort_col, id)` index to seek directly to that position and scan forward. The two separate single-column indexes are not equivalent — a composite B-tree index is required so that Postgres can seek to an exact `(sort_col, id)` position rather than scanning and filtering.
 
 `LIMIT/OFFSET` scans and discards all prior rows on every page request — cost grows linearly with depth. Keyset pagination does not.
+
+### Constraints
+
+- **`sort_by` columns must be `NOT NULL`.** SQL row comparison with NULL yields NULL, so rows with a NULL sort value are silently excluded from every cursor page — and if the anchor row itself has a NULL sort value, the next page comes back empty mid-stream.
+- **Hard-deleting an anchor row ends that pagination sequence.** The anchor lookup is by primary key; if the row is gone, the next page is empty and indistinguishable from the end of the result set. Soft deletion via a `scope:` (e.g. `deleted_at IS NULL`) is safe — the anchor lookup deliberately bypasses the scope, so a row that left the scope between pages still anchors correctly.
+- **Every table is expected to have a unique, totally ordered `id`** (SERIAL, UUIDv7, ...) — it is the tie-breaker that makes pages deterministic, and the whole `Dataset` interface assumes it.
 
 ## Documentation
 
