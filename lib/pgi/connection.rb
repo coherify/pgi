@@ -45,13 +45,14 @@ module PGI
         @conn.exec_prepared(stmt_name, params)
       rescue PG::InvalidSqlStatementName
         @logger&.debug "Creating missing prepared statement: \"#{stmt_name}\""
-        begin
-          @conn.prepare(stmt_name, sql) && retry
-        rescue PG::SyntaxError => e
-          @logger&.error(e)
-          raise
-        end
+        @conn.prepare(stmt_name, sql)
+        retry
       end
+    rescue PG::Error => e
+      # Log at the source so failures are traceable regardless of how the
+      # consumer handles the exception
+      @logger&.error(e)
+      raise
     end
 
     # Pass the remainder of methods on to a PG::Connection

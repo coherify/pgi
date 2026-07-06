@@ -23,14 +23,18 @@ module PGI
         @returning = options.fetch(:returning, nil)
       end
 
-      # Adds a WHERE clause to the query
+      # Adds a WHERE clause to the query - can only be called once per query,
+      # so combine all conditions in a single call
       #
       # @param clause [Hash, String] a Hash of table columns and values - or a string with placeholders
       # @param params [Array] list of values for placeholder substitution
+      # @raise [RuntimeError] if a WHERE clause is already set
       # @return [Query] return the Query instance (for method chaining)
       def where(clause = nil, params = [])
         return self unless clause
         return self if clause.empty?
+
+        raise "WHERE clause already set - combine conditions in a single call" if @where
 
         case clause
         when Hash
@@ -41,8 +45,9 @@ module PGI
         when String
           raise "Use placeholders in WHERE clause" if clause =~ /=(?!\s*[?$])/
 
+          offset = @params.size
           @params += params
-          clause.gsub!(/([=<>]{1}\s{0,})(\?)/).with_index { |_, i| "#{Regexp.last_match(1)}$#{i + 1}" }
+          clause = clause.gsub(/([=<>]{1}\s{0,})(\?)/).with_index { |_, i| "#{Regexp.last_match(1)}$#{offset + i + 1}" }
         else
           raise "WHERE clause can either be a Hash or a String"
         end
@@ -179,6 +184,7 @@ module PGI
       # @return [Integer]
       def count
         @command = "SELECT COUNT(*) FROM #{@table}"
+        @order   = {}
         first&.fetch("count", 0)
       end
 

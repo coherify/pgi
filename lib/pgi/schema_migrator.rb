@@ -42,16 +42,8 @@ module PGI
 
         raise "FATAL: Migration version does not exist" unless version.nil? || migrations.key?(version)
 
-        to_version = version || latest_migration.to_i
+        to_version = version || latest_migration
         current    = current_version
-        walk       = to_version - current
-        direction  = walk.positive? ? 1 : -1
-        steps      =
-          if direction == 1
-            migrations.keys[(current + 1)..].to_a
-          else
-            migrations.keys[0..current].to_a.reverse
-          end.take(walk.abs)
 
         if current == to_version
           puts "No migrations detected..."
@@ -59,10 +51,16 @@ module PGI
         end
 
         config.pg_conn.transaction do
-          steps.each do |v|
-            delete_version(v) if direction == -1
-            config.pg_conn.exec(migrations[v][direction])
-            add_version(v) if direction == 1
+          if to_version > current
+            ((current + 1)..to_version).each do |v|
+              config.pg_conn.exec(migrations[v][1])
+              add_version(v)
+            end
+          else
+            current.downto(to_version + 1) do |v|
+              delete_version(v)
+              config.pg_conn.exec(migrations[v][-1])
+            end
           end
         end
       end

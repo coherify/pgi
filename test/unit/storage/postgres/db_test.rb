@@ -98,7 +98,7 @@ describe PGI::DB do
     end
   end
 
-  it "raises error on bad syntax" do
+  it "logs and re-raises error on bad syntax" do
     log = LOG_CATCHER.run do
       assert_raises PG::SyntaxError do
         subject.exec_stmt("stmt_name", "select from 1")
