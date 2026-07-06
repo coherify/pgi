@@ -82,18 +82,22 @@ module PGI
         self
       end
 
-      # Apply a keyset pagination cursor as a WHERE predicate. Combines with any
-      # existing WHERE clause, so call it after #where. Does not set ORDER BY —
-      # the caller (Dataset#page) orders by (sort_by, id) to match the predicate.
+      # Apply keyset pagination: orders by (sort_by, id) and, when a cursor id is
+      # given, seeks past that row. A nil cursor_id is the first page. The cursor
+      # predicate combines with any existing WHERE clause, so call it after #where.
       # For sort_by == :id:    WHERE id > $cursor_id
       # For sort_by != :id:    WHERE (sort_col, id) > (SELECT sort_col, id FROM table WHERE id = $cursor_id)
+      # Do not combine with a conflicting #order call — pages are only correct when
+      # the leading sort columns match the cursor predicate.
       #
       # @param sort_by [Symbol] the sort column
-      # @param cursor_id [*] id of the last row from the previous page
+      # @param cursor_id [*, nil] id of the last row from the previous page, or nil for the first page
       # @param sort_dir [Symbol] :asc or :desc
       # @return [Query] return the Query instance (for method chaining)
-      def with_cursor(sort_by, cursor_id, sort_dir)
-        raise "Invalid direction: #{sort_dir.inspect}" unless %i[asc desc].include?(sort_dir)
+      def keyset(sort_by, cursor_id, sort_dir)
+        order(sort_by, sort_dir)
+        order(:id, sort_dir) unless sort_by.to_sym == :id
+        return self unless cursor_id
 
         op     = sort_dir == :asc ? ">" : "<"
         id_col = Utils.sanitize_columns(:id, @table).first

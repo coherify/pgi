@@ -124,12 +124,7 @@ module PGI
     # @param where [Array] optional WHERE clause forwarded to Query#where
     # @return [Array] list of Models or Hashes
     def page(cursor = nil, size = 10, sort_by = :id, sort_dir = :asc, *where)
-      query = Query.new(@database, @table, nil, **@options).where(*where).limit(size)
-      query.order(sort_by, sort_dir)
-      query.order(:id, sort_dir) unless sort_by.to_sym == :id
-      query.with_cursor(sort_by, cursor, sort_dir) if cursor
-
-      _to_models query.to_a
+      _to_models Query.new(@database, @table, nil, **@options).where(*where).limit(size).keyset(sort_by, cursor, sort_dir).to_a
     end
 
     private
