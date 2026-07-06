@@ -1,6 +1,5 @@
 require "pgi/dataset/query"
 require "pgi/dataset/utils"
-require "pgi/dataset/parameters"
 
 module PGI
   module Dataset
@@ -33,16 +32,16 @@ module PGI
     end
 
     def insert!(**attributes)
-      params = Parameters.new(attributes)
+      columns, placeholders, values = sql_params(attributes)
       command = "INSERT INTO #{@table}"
       command <<
-        if params.columns.empty?
+        if columns.empty?
           " DEFAULT VALUES"
         else
-          " (#{params.columns.join(", ")}) VALUES (#{params.indexs.join(", ")}) "
+          " (#{columns.join(", ")}) VALUES (#{placeholders.join(", ")}) "
         end
 
-      _to_model Query.new(@database, @table, command, params: params.values).limit(nil).to_a.first
+      _to_model Query.new(@database, @table, command, params: values).limit(nil).to_a.first
     end
 
     # Update row
@@ -57,17 +56,15 @@ module PGI
     end
 
     def update!(id, **args)
-      args[:id] = id
-      params = Parameters.new(args)
-      set_params = params.attributes.filter { |x| x.key != :id }
-      id_param = params.by_key[:id]
-      command = "UPDATE #{@table} SET #{set_params.map { |x| "#{x.column} = #{x.index}" }.join(", ")} " \
-                "WHERE #{id_param.column} = #{id_param.index} RETURNING *"
+      columns, placeholders, values = sql_params(args)
+      set_clause = columns.zip(placeholders).map { |c, p| "#{c} = #{p}" }.join(", ")
+      command = "UPDATE #{@table} SET #{set_clause} " \
+                "WHERE #{Utils.sanitize_column(:id)} = $#{values.size + 1} RETURNING *"
 
       # TODO: Query throws `PG::IndeterminateDatatype: ERROR:  could not determine data type of parameter $2`
-      # _to_model Query.new(@database, @table, command, params: params).where(id: id).limit(nil)
+      # _to_model Query.new(@database, @table, command, params: values + [id]).where(id: id).limit(nil)
 
-      _to_model @database.exec_stmt(Utils.stmt_name(@table, command), command, params.values)&.first
+      _to_model @database.exec_stmt(Utils.stmt_name(@table, command), command, values + [id])&.first
     end
 
     # Delete row
@@ -136,6 +133,17 @@ module PGI
     end
 
     private
+
+    # Build aligned column names, $N placeholders and values from an attributes
+    # hash. Sorted by key so identical attributes always produce identical SQL -
+    # the prepared-statement name is a digest of the SQL.
+    #
+    # @param attributes [Hash] column => value
+    # @return [Array(Array, Array, Array)] sanitized columns, placeholders, values
+    def sql_params(attributes)
+      attrs = attributes.sort.to_h
+      [Utils.sanitize_columns(attrs.keys), (1..attrs.size).map { |i| "$#{i}" }, attrs.values]
+    end
 
     # Call #to_model on super class if defined
     #
