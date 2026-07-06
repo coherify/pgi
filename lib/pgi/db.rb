@@ -10,16 +10,19 @@ module PGI
     #
     # @param pool [ConnectionPool]
     # @param logger [Logger]
-    # @param max_retries [Integer]
-    def initialize(pool, logger, max_retries: 10)
+    # @param max_retries [Integer, Float] shared retry budget for lost connections and pool
+    #   checkout timeouts - use Float::INFINITY to ride out arbitrarily long outages
+    # @param retry_wait [Numeric] seconds to sleep between reconnection attempts
+    def initialize(pool, logger, max_retries: 10, retry_wait: 2)
       @pool        = pool
       @logger      = logger
       @max_retries = max_retries
+      @retry_wait  = retry_wait
     end
 
     def self.configure
       @options = Struct.new(
-        :pool_size, :pool_timeout, :pg_conn_uri, :logger
+        :pool_size, :pool_timeout, :pg_conn_uri, :logger, :max_retries, :retry_wait
       ).new
 
       yield @options
@@ -28,7 +31,8 @@ module PGI
         Connection.new(conn_uri: @options.pg_conn_uri, logger: @options.logger)
       end
 
-      new(pool, @options.logger)
+      retry_options = { max_retries: @options.max_retries, retry_wait: @options.retry_wait }.compact
+      new(pool, @options.logger, **retry_options)
     end
 
     # wrapper around ConnectionPool#with with auto-healing capabilities
@@ -46,6 +50,9 @@ module PGI
 
     # wrapper around ConnectionPool#with with auto-healing capabilities
     #
+    # Lost connections and pool checkout timeouts share the max_retries budget,
+    # so a genuinely stuck pool fails loudly instead of waiting forever.
+    #
     # @yield PGI:Connection
     def with
       raise "Missing block" unless block_given?
@@ -56,17 +63,22 @@ module PGI
           yield conn
         end
       rescue PG::ConnectionBad, PG::UnableToSend => e
-        if retries >= @max_retries
+        retries += 1
+        if retries > @max_retries
           @logger.thrown("DB connection was lost - unable to reconnect", e)
           raise
         end
-        retries += 1
         @logger.thrown("DB connection was lost - reconnecting(#{retries}/#{@max_retries}) and retrying", e)
         @pool.reload(&:close)
-        sleep 2
+        sleep @retry_wait
         retry
       rescue ConnectionPool::TimeoutError => e
-        @logger.thrown("Timeout in checking out DB connection from pool - retrying", e)
+        retries += 1
+        if retries > @max_retries
+          @logger.thrown("Timeout in checking out DB connection from pool - giving up", e)
+          raise
+        end
+        @logger.thrown("Timeout in checking out DB connection from pool - retrying(#{retries}/#{@max_retries})", e)
         retry
       end
     end

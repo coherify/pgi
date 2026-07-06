@@ -76,7 +76,38 @@ describe PGI::DB do
           _(res.first["sum"]).must_equal 2
         end.join
       end
-      _(log).must_match "Timeout in checking out DB connection from pool"
+      _(log).must_match "Timeout in checking out DB connection from pool - retrying"
+    end
+
+    it "stops retrying on connection pool timeout" do
+      log = LOG_CATCHER.run do
+        subject.instance_variable_set(:@max_retries, 0)
+        holder = Thread.new { subject.with { |_| sleep 1 } }
+        sleep 0.2
+
+        assert_raises ConnectionPool::TimeoutError do
+          subject.with { |conn| conn.exec("SELECT 1+1 AS sum") }
+        end
+
+        holder.join
+      end
+      _(log).must_match "Timeout in checking out DB connection from pool - giving up"
+    end
+  end
+
+  describe ".configure" do
+    it "exposes max_retries and retry_wait" do
+      db = PGI::DB.configure do |options|
+        options.pool_size = 1
+        options.pool_timeout = 0.2
+        options.pg_conn_uri = ENV.fetch("PG_CONN_URI", "postgresql://pgi:password@localhost:5434/pgi_test")
+        options.logger = LOG_CATCHER
+        options.max_retries = 3
+        options.retry_wait = 0
+      end
+
+      _(db.instance_variable_get(:@max_retries)).must_equal 3
+      _(db.instance_variable_get(:@retry_wait)).must_equal 0
     end
   end
 
