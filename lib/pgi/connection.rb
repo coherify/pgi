@@ -48,6 +48,11 @@ module PGI
         @conn.prepare(stmt_name, sql)
         retry
       end
+    rescue PG::Error => e
+      # Log at the source so failures are traceable regardless of how the
+      # consumer handles the exception
+      @logger&.error(e)
+      raise
     end
 
     # Pass the remainder of methods on to a PG::Connection
