@@ -9,7 +9,7 @@ module PGI
         # @param attr [Hash] input hash
         # @return [Hash] stripped hash
         def strip_uninsertable(attr)
-          attr.except(:id).except(:created_at).except(:updated_at)
+          attr.except(:id, :created_at, :updated_at)
         end
 
         # Strips the fields to not update off a hash
@@ -17,7 +17,7 @@ module PGI
         # @param attr [Hash] input hash
         # @return [Hash] stripped hash
         def strip_unupdateable(attr)
-          attr.except(:created_at).except(:updated_at)
+          attr.except(:created_at, :updated_at)
         end
 
         # Get a unique statement name for the Query

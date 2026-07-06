@@ -99,12 +99,10 @@ describe PGI::DB do
   end
 
   it "raises error on bad syntax" do
-    log = LOG_CATCHER.run do
-      assert_raises PG::SyntaxError do
-        subject.exec_stmt("stmt_name", "select from 1")
-      end
+    e = assert_raises PG::SyntaxError do
+      subject.exec_stmt("stmt_name", "select from 1")
     end
-    _(log).must_match "syntax error at or near"
+    _(e.message).must_match "syntax error at or near"
   end
 
   it "relays missing methods to PG connection" do

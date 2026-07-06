@@ -50,6 +50,13 @@ describe PGI::Dataset::Query do
       end
     end
 
+    it "combines multiple calls with AND and renumbers placeholders" do
+      query.where(name: "joe").where("age > ?", [25]).tap do |obj|
+        _(obj.sql).must_match(/WHERE \("dataset"\."name" = \$1\) AND \(age > \$2\)/)
+        _(obj.params).must_equal ["joe", 25]
+      end
+    end
+
     it "raises error on invalid datatype for WHERE clause" do
       e = assert_raises RuntimeError do
         query.where(["hest = 'fest'"])
@@ -152,6 +159,10 @@ describe PGI::Dataset::Query do
     it "returns the number of rows" do
       _(query.count).must_equal 1
       _(query.where(name: "jill").count).must_equal 0
+    end
+
+    it "ignores a previously set ORDER BY" do
+      _(query.order(:age).count).must_equal 1
     end
   end
 
