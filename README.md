@@ -15,11 +15,8 @@ Usage:
 DB = PGI::DB.configure do |options|
   options.pool_size = 1
   options.pool_timeout = 5
-  options.pg_database = "pgi_test"
-  options.pg_host = "localhost"
-  options.pg_user = "pgi"
-  options.pg_password = "password"
-  options.logger = LOG_CATCHER
+  options.pg_conn_uri = "postgresql://pgi:password@localhost:5432/pgi_test"
+  options.logger = Logger.new($stdout)
 end
 
 DB.exec_stmt("my_stmt", "SELECT 1+1")
