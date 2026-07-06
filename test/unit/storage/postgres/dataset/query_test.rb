@@ -50,11 +50,9 @@ describe PGI::Dataset::Query do
       end
     end
 
-    it "combines multiple calls with AND and renumbers placeholders" do
-      query.where(name: "joe").where("age > ?", [25]).tap do |obj|
-        _(obj.sql).must_match(/WHERE \("dataset"\."name" = \$1\) AND \(age > \$2\)/)
-        _(obj.params).must_equal ["joe", 25]
-      end
+    it "raises when a WHERE clause is already set" do
+      e = assert_raises(RuntimeError) { query.where(name: "joe").where("age > ?", [25]) }
+      _(e.message).must_equal "WHERE clause already set - combine conditions in a single call"
     end
 
     it "raises error on invalid datatype for WHERE clause" do
