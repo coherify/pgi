@@ -65,20 +65,20 @@ module PGI
       rescue PG::ConnectionBad, PG::UnableToSend => e
         retries += 1
         if retries > @max_retries
-          @logger.thrown("DB connection was lost - unable to reconnect", e)
+          @logger&.error("DB connection was lost - unable to reconnect (#{e.class}: #{e.message})")
           raise
         end
-        @logger.thrown("DB connection was lost - reconnecting(#{retries}/#{@max_retries}) and retrying", e)
+        @logger&.warn("DB connection was lost - reconnecting(#{retries}/#{@max_retries}) and retrying (#{e.class}: #{e.message})")
         @pool.reload(&:close)
         sleep @retry_wait
         retry
       rescue ConnectionPool::TimeoutError => e
         retries += 1
         if retries > @max_retries
-          @logger.thrown("Timeout in checking out DB connection from pool - giving up", e)
+          @logger&.error("Timeout in checking out DB connection from pool - giving up (#{e.message})")
           raise
         end
-        @logger.thrown("Timeout in checking out DB connection from pool - retrying(#{retries}/#{@max_retries})", e)
+        @logger&.warn("Timeout in checking out DB connection from pool - retrying(#{retries}/#{@max_retries}) (#{e.message})")
         retry
       end
     end

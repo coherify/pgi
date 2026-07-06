@@ -22,22 +22,6 @@ module PGI
           device.rewind && device.read
         end
 
-        def thrown(msg, exception)
-          parts = [
-            msg,
-            "\t#{exception.class}: #{exception.message}",
-            "\tTrace:",
-            exception.backtrace.map { |trace_line| "\t\t#{trace_line}" }
-          ]
-
-          if (inner = exception.cause)
-            parts << "\tCause:"
-            parts << "\t\t#{inner.class}: #{inner.message}"
-          end
-
-          error(parts.join("\n"))
-        end
-
         class << self
           def logger
             new(StringIO.new)
