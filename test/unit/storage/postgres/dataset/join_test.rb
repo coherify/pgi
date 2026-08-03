@@ -1,0 +1,113 @@
+require "test/helper"
+require "pgi/dataset"
+
+describe "PGI::Dataset joins" do
+  include PGI::Test::Methods
+
+  let(:pg_conn) { postgres_connection }
+  let(:migrator) { postgres_migrator(pg_conn) }
+  let(:repo) do
+    Class.new do
+      extend PGI::Dataset[PG_CONN, :dataset]
+    end
+  end
+
+  before do
+    migrator.migrate!(0)
+    migrator.migrate!
+    PG_CONN.exec("DROP TABLE IF EXISTS pets")
+    PG_CONN.exec("CREATE TABLE pets (id SERIAL, dataset_id INTEGER, name VARCHAR(256))")
+    # joe (id 1) comes from the fixture migration; one pet per owner so keyset
+    # over the joined sort column is well-defined (FK -> PK cardinality).
+    PG_CONN.exec("INSERT INTO dataset (name, age) VALUES ('ann', 30), ('carl', 35)")
+    PG_CONN.exec("INSERT INTO pets (dataset_id, name) VALUES (1, 'rex'), (2, 'abe'), (3, 'cat')")
+  end
+
+  describe "#join" do
+    it "builds an INNER JOIN with a qualified select star" do
+      repo.join(:pets, on: { id: :dataset_id }).tap do |query|
+        _(query.sql).must_match(/SELECT "dataset"\.\* FROM dataset INNER JOIN "pets" ON "dataset"\."id" = "pets"\."dataset_id"/)
+      end
+    end
+
+    it "keeps a custom select list intact" do
+      repo.select(:name).join(:pets, on: { id: :dataset_id }).tap do |query|
+        _(query.sql).must_match(/SELECT "dataset"\."name" FROM dataset INNER JOIN "pets"/)
+      end
+    end
+
+    it "rejects invalid table names" do
+      _(-> { repo.join(:"pets; DROP TABLE dataset", on: { id: :dataset_id }) }).must_raise RuntimeError
+    end
+
+    it "rejects a missing or empty on-mapping" do
+      _(-> { repo.join(:pets, on: {}) }).must_raise RuntimeError
+      _(-> { repo.join(:pets, on: nil) }).must_raise RuntimeError
+    end
+  end
+
+  describe "#where with qualified columns" do
+    it "filters base rows by joined-table columns without leaking their columns" do
+      rows = repo.join(:pets, on: { id: :dataset_id }).where(pets: { name: "rex" }).to_a
+
+      _(rows.size).must_equal 1
+      _(rows.first["name"]).must_equal "joe"
+      _(rows.first.keys.sort).must_equal %w[age id name]
+    end
+
+    it "qualifies nested keys for the base table too" do
+      repo.join(:pets, on: { id: :dataset_id }).where(dataset: { name: "joe" }).tap do |query|
+        _(query.sql).must_match(/"dataset"\."name" = \$1/)
+      end
+    end
+
+    it "rejects nested keys that are not the base or a joined table" do
+      _(-> { repo.join(:pets, on: { id: :dataset_id }).where(cats: { name: "x" }) }).must_raise RuntimeError
+      _(-> { repo.where(pets: { name: "x" }) }).must_raise RuntimeError
+    end
+  end
+
+  describe "#order with qualified columns" do
+    it "orders by a joined column" do
+      repo.join(:pets, on: { id: :dataset_id }).order({ pets: :name }, :desc).tap do |query|
+        _(query.sql).must_match(/ORDER BY "pets"\."name" DESC/)
+      end
+    end
+
+    it "rejects multi-pair qualified columns" do
+      _(-> { repo.join(:pets, on: { id: :dataset_id }).order({ pets: :name, dataset: :age }) }).must_raise RuntimeError
+    end
+  end
+
+  describe "keyset pagination over a joined sort column" do
+    it "pages in joined-column order with a working cursor" do
+      joined = -> { repo.join(:pets, on: { id: :dataset_id }) }
+
+      # pets sorted asc: abe(ann), cat(carl), rex(joe)
+      page1 = joined.call.page(nil, 2, { pets: :name }, :asc)
+      _(page1.map { |r| r["name"] }).must_equal %w[ann carl]
+
+      page2 = joined.call.page(page1.last["id"], 2, { pets: :name }, :asc)
+      _(page2.map { |r| r["name"] }).must_equal %w[joe]
+    end
+
+    it "pages descending" do
+      page1 = repo.join(:pets, on: { id: :dataset_id }).page(nil, 2, { pets: :name }, :desc)
+      _(page1.map { |r| r["name"] }).must_equal %w[joe carl]
+    end
+
+    it "returns raw rows when no mapper is attached" do
+      query = PGI::Dataset::Query.new(PG_CONN, :dataset, nil).join(:pets, on: { id: :dataset_id })
+      rows  = query.page(nil, 10, { pets: :name }, :asc)
+
+      _(rows.first).must_be_kind_of Hash
+    end
+  end
+
+  describe "#count with joins" do
+    it "counts the joined result set" do
+      count = repo.join(:pets, on: { id: :dataset_id }).where(pets: { name: "rex" }).count
+      _(count).must_equal 1
+    end
+  end
+end

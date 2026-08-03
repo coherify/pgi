@@ -21,6 +21,20 @@ module PGI
       Query.new(@database, @table, nil, **@options).where(*)
     end
 
+    # Start a query with an INNER JOIN so WHERE/ORDER BY/keyset can reference
+    # the joined table's columns (filtering and sorting only - result rows stay
+    # base-table rows and map to the base model). The returned Query mirrors
+    # #page, so it drops into the same call sites as the Dataset itself.
+    #
+    # @param table [Symbol] the table to join
+    # @param on [Hash] base-table column(s) => joined-table column(s)
+    # @return [Query]
+    def join(table, on:)
+      Query
+        .new(@database, @table, nil, **@options, mapper: proc { |rows| _to_models(rows) })
+        .join(table, on: on)
+    end
+
     # Insert new row
     #
     # @param args [Hash|Object] row data
