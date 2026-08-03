@@ -79,28 +79,26 @@ describe "PGI::Dataset joins" do
     end
   end
 
-  describe "keyset pagination over a joined sort column" do
-    it "pages in joined-column order with a working cursor" do
-      joined = -> { repo.join(:pets, on: { id: :dataset_id }) }
+  describe "Dataset#page with joins" do
+    let(:joins) { { pets: { id: :dataset_id } } }
 
+    it "pages in joined-column order with a working cursor" do
       # pets sorted asc: abe(ann), cat(carl), rex(joe)
-      page1 = joined.call.page(nil, 2, { pets: :name }, :asc)
+      page1 = repo.page(nil, 2, { pets: :name }, :asc, joins: joins)
       _(page1.map { |r| r["name"] }).must_equal %w[ann carl]
 
-      page2 = joined.call.page(page1.last["id"], 2, { pets: :name }, :asc)
+      page2 = repo.page(page1.last["id"], 2, { pets: :name }, :asc, joins: joins)
       _(page2.map { |r| r["name"] }).must_equal %w[joe]
     end
 
     it "pages descending" do
-      page1 = repo.join(:pets, on: { id: :dataset_id }).page(nil, 2, { pets: :name }, :desc)
+      page1 = repo.page(nil, 2, { pets: :name }, :desc, joins: joins)
       _(page1.map { |r| r["name"] }).must_equal %w[joe carl]
     end
 
-    it "returns raw rows when no mapper is attached" do
-      query = PGI::Dataset::Query.new(PG_CONN, :dataset, nil).join(:pets, on: { id: :dataset_id })
-      rows  = query.page(nil, 10, { pets: :name }, :asc)
-
-      _(rows.first).must_be_kind_of Hash
+    it "combines joins with qualified where filters" do
+      rows = repo.page(nil, 10, :id, :asc, { pets: { name: "rex" } }, joins: joins)
+      _(rows.map { |r| r["name"] }).must_equal %w[joe]
     end
   end
 

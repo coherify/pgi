@@ -21,18 +21,17 @@ module PGI
       Query.new(@database, @table, nil, **@options).where(*)
     end
 
-    # Start a query with an INNER JOIN so WHERE/ORDER BY/keyset can reference
-    # the joined table's columns (filtering and sorting only - result rows stay
-    # base-table rows and map to the base model). The returned Query mirrors
-    # #page, so it drops into the same call sites as the Dataset itself.
+    # Start a query with an INNER JOIN so WHERE/ORDER BY can reference the
+    # joined table's columns (filtering and sorting only - result rows stay
+    # base-table rows). Like #where, the returned Query yields raw row hashes;
+    # model mapping is the privilege of Dataset methods - for a paginated,
+    # model-mapped joined read use #page with the joins: keyword.
     #
     # @param table [Symbol] the table to join
     # @param on [Hash] base-table column(s) => joined-table column(s)
     # @return [Query]
     def join(table, on:)
-      Query
-        .new(@database, @table, nil, **@options, mapper: proc { |rows| _to_models(rows) })
-        .join(table, on: on)
+      Query.new(@database, @table, nil, **@options).join(table, on: on)
     end
 
     # Insert new row
@@ -135,10 +134,20 @@ module PGI
     # @param size [Integer] number of rows per page
     # @param sort_by [Symbol] column to sort by
     # @param sort_dir [Symbol] :asc or :desc
+    # Joins (filter/sort only - result rows stay base-table rows) are passed
+    # as data: joins: { users: { user_id: :id } } maps joined table => on
+    # mapping, enabling qualified where ({ users: { name: "x" } }) and a
+    # qualified sort_by ({ users: :name }). Keyset over a joined sort column
+    # requires at most one joined row per base row (e.g. FK -> PK).
+    #
     # @param where [Array] optional WHERE clause forwarded to Query#where
+    # @param joins [Hash] joined table => on-mapping, forwarded to Query#join
     # @return [Array] list of Models or Hashes
-    def page(cursor = nil, size = 10, sort_by = :id, sort_dir = :asc, *where)
-      _to_models Query.new(@database, @table, nil, **@options).where(*where).limit(size).keyset(sort_by, cursor, sort_dir).to_a
+    def page(cursor = nil, size = 10, sort_by = :id, sort_dir = :asc, *where, joins: {})
+      query = Query.new(@database, @table, nil, **@options)
+      joins.each { |table, on| query.join(table, on: on) }
+
+      _to_models query.where(*where).limit(size).keyset(sort_by, cursor, sort_dir).to_a
     end
 
     private

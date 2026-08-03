@@ -23,7 +23,6 @@ module PGI
         @order     = options.fetch(:order, {})
         @limit     = options.fetch(:limit, 10)
         @returning = options.fetch(:returning, nil)
-        @mapper    = options.fetch(:mapper, nil)
         @joins       = []
         @join_tables = []
       end
@@ -165,21 +164,6 @@ module PGI
 
         @where = @where ? "#{clause} AND (#{@where})" : clause
         self
-      end
-
-      # Get a page of results using keyset pagination - mirrors Dataset#page so
-      # a joined query (Dataset#join) drops into the same call sites. Rows map
-      # through the Dataset's model mapper when one was attached.
-      #
-      # @param cursor [*, nil] id of the last row from the previous page, or nil for the first page
-      # @param size [Integer] number of rows per page
-      # @param sort_by [Symbol, Hash] sort column; { table => column } for a joined column
-      # @param sort_dir [Symbol] :asc or :desc
-      # @param where_args [Array] optional WHERE clause forwarded to #where
-      # @return [Array] list of Models or Hashes
-      def page(cursor = nil, size = 10, sort_by = :id, sort_dir = :asc, *where_args)
-        rows = where(*where_args).limit(size).keyset(sort_by, cursor, sort_dir).to_a
-        @mapper ? @mapper.call(rows) : rows
       end
 
       # Get the Query SQL string prepared for execution
