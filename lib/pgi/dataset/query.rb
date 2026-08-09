@@ -11,7 +11,8 @@ module PGI
       # @param command [String] the command part of the query (default: `SELECT * FROM <table>`)
       # @param options [Hash] hash of options: scope, where, params, limit, order, returning
       # @return [Query] new instance of Query
-      TABLE_NAME = /\A[a-z_][a-z0-9_]*\z/
+      TABLE_NAME     = /\A[a-z_][a-z0-9_]*\z/
+      COLLATION_NAME = /\A[A-Za-z0-9_-]+\z/
 
       def initialize(database, table, command, **options)
         @database  = database
@@ -107,12 +108,14 @@ module PGI
       # @param column [Symbol, Hash] the column - a single-pair Hash qualifies
       #   it with a joined table: { users: :name }
       # @param direction [Symbol] the direction the sort should take - can be either `:desc` or `:asc`
+      # @param collate [String, nil] collation for text ordering, e.g. "da-x-icu"
+      #   (policy - which locale maps to which collation - belongs to the caller)
       # @raise [RuntimeError] if the direction param is invalid
       # @return [Query] return the Query instance (for method chaining)
-      def order(column, direction = :asc)
+      def order(column, direction = :asc, collate: nil)
         raise "Invalid ORDER BY direction: #{direction.inspect}" unless %i[asc desc].include?(direction)
 
-        @order[[qualified_column(column)]] = direction.to_s.upcase
+        @order[[collated_column(column, collate)]] = direction.to_s.upcase
         self
       end
 
@@ -139,10 +142,13 @@ module PGI
       # @param sort_by [Symbol] the sort column
       # @param cursor_id [*, nil] id of the last row from the previous page, or nil for the first page
       # @param sort_dir [Symbol] :asc or :desc
+      # @param collate [String, nil] collation for the sort column. Must be the
+      #   same everywhere the column orders or compares - ORDER BY, the cursor
+      #   tuple and the cursor subselect all carry it, or page boundaries drift
       # @return [Query] return the Query instance (for method chaining)
-      def keyset(sort_by, cursor_id, sort_dir)
+      def keyset(sort_by, cursor_id, sort_dir, collate: nil)
         sort_on_id = !sort_by.is_a?(Hash) && sort_by.to_sym == :id
-        order(sort_by, sort_dir)
+        order(sort_by, sort_dir, collate: (collate unless sort_on_id))
         order(:id, sort_dir) unless sort_on_id
         return self unless cursor_id
 
@@ -157,7 +163,7 @@ module PGI
             # The cursor row's sort value must be resolved through the same
             # FROM (incl. joins) as the outer query, or a joined sort column
             # would not exist in the subselect.
-            sort_col = qualified_column(sort_by)
+            sort_col = collated_column(sort_by, collate)
             from     = ["FROM #{@table}", *@joins].join(" ")
             "(#{sort_col}, #{id_col}) #{op} (SELECT #{sort_col}, #{id_col} #{from} WHERE #{id_col} = $#{@params.size})"
           end
@@ -280,6 +286,17 @@ module PGI
         return if table.to_sym == @table.to_sym || @join_tables.include?(table.to_sym)
 
         raise "Unknown table #{table.inspect} - qualify only the base table or joined tables"
+      end
+
+      # A column reference with an optional COLLATE. Collation names are
+      # identifiers (e.g. "da-x-icu"), validated and quoted - never params.
+      def collated_column(column, collate)
+        col = qualified_column(column)
+        return col unless collate
+
+        raise "Invalid collation: #{collate.inspect}" unless collate.to_s.match?(COLLATION_NAME)
+
+        %(#{col} COLLATE "#{collate}")
       end
     end
   end

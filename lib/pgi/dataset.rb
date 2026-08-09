@@ -142,12 +142,14 @@ module PGI
     #
     # @param where [Array] optional WHERE clause forwarded to Query#where
     # @param joins [Hash] joined table => on-mapping, forwarded to Query#join
+    # @param collate [String, nil] collation for the sort column (e.g.
+    #   "da-x-icu"), forwarded to Query#keyset
     # @return [Array] list of Models or Hashes
-    def page(cursor = nil, size = 10, sort_by = :id, sort_dir = :asc, *where, joins: {})
+    def page(cursor = nil, size = 10, sort_by = :id, sort_dir = :asc, *where, joins: {}, collate: nil)
       query = Query.new(@database, @table, nil, **@options)
       joins.each { |table, on| query.join(table, on: on) }
 
-      _to_models query.where(*where).limit(size).keyset(sort_by, cursor, sort_dir).to_a
+      _to_models query.where(*where).limit(size).keyset(sort_by, cursor, sort_dir, collate: collate).to_a
     end
 
     private
