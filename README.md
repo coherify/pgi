@@ -94,6 +94,58 @@ LIMIT 20
 
 `LIMIT/OFFSET` scans and discards all prior rows on every page request — cost grows linearly with depth. Keyset pagination does not.
 
+### Joins
+
+`#join(table, on:)` adds an `INNER JOIN` so `#where` and `#order` (and keyset
+pagination) can reference the joined table's columns. Joins are for **filtering
+and sorting only, not projection** — the select list stays the base table's
+columns, so result rows still map to the base model unchanged.
+
+```ruby
+# Members that have an accepted membership in some account.
+# `on:` maps base-table column => joined-table column.
+Repository
+  .join(:memberships, on: { id: :member_id })
+  .where(memberships: { accepted: true })
+  .all
+```
+
+```sql
+SELECT "members".* FROM members
+INNER JOIN "memberships" ON "members"."id" = "memberships"."member_id"
+WHERE "memberships"."accepted" = true
+```
+
+A Hash value under a table-name key (`memberships: { accepted: true }`)
+qualifies its columns with that table — the key must be the base table or an
+already-joined table, never guessed. `#order` takes the same `{ table => column }`
+form to sort by a joined column.
+
+`#join` returns a `Query` yielding **raw row hashes** (like `#where`); model
+mapping is reserved for `Dataset` methods. For a paginated, model-mapped joined
+read, pass the `joins:` keyword to `#page`:
+
+```ruby
+# Page members sorted by their user's name.
+Repository.page(cursor, 20, { users: :name }, :asc,
+                joins: { memberships: { id: :member_id },
+                         users:       { { memberships: :user_id } => :id } })
+```
+
+`joins:` maps *joined table => on-mapping*. An on-key may itself be qualified
+(`{ { memberships: :user_id } => :id }`) to chain a **second hop** off an
+earlier join — join `memberships` to the base, then join `users` to
+`memberships`. The referenced table must already be joined, so **declare joins
+in dependency order** (an ordered Hash preserves it).
+
+Notes:
+
+- Keyset pagination over a joined sort column requires **at most one joined row
+  per base row** (e.g. `FK -> PK`); with 1:N joins the page boundaries are
+  ill-defined and the cursor lookup fails.
+- A `scope:` with unqualified columns becomes ambiguous once a join shares a
+  column name — qualify the scope's columns (e.g. `members.deleted_at IS NULL`).
+
 ### Constraints
 
 - **`sort_by` columns must be `NOT NULL`.** SQL row comparison with NULL yields NULL, so rows with a NULL sort value are silently excluded from every cursor page — and if the anchor row itself has a NULL sort value, the next page comes back empty mid-stream.
