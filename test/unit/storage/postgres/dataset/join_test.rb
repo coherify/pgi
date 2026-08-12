@@ -16,11 +16,15 @@ describe "PGI::Dataset joins" do
     migrator.migrate!(0)
     migrator.migrate!
     PG_CONN.exec("DROP TABLE IF EXISTS pets")
-    PG_CONN.exec("CREATE TABLE pets (id SERIAL, dataset_id INTEGER, name VARCHAR(256))")
+    PG_CONN.exec("DROP TABLE IF EXISTS tags")
+    PG_CONN.exec("CREATE TABLE tags (id SERIAL, name VARCHAR(256))")
+    PG_CONN.exec("CREATE TABLE pets (id SERIAL, dataset_id INTEGER, tag_id INTEGER, name VARCHAR(256))")
     # joe (id 1) comes from the fixture migration; one pet per owner so keyset
-    # over the joined sort column is well-defined (FK -> PK cardinality).
+    # over the joined sort column is well-defined (FK -> PK cardinality). Each
+    # pet carries a tag, so pets -> tags is the second hop off the first join.
     PG_CONN.exec("INSERT INTO dataset (name, age) VALUES ('ann', 30), ('carl', 35)")
-    PG_CONN.exec("INSERT INTO pets (dataset_id, name) VALUES (1, 'rex'), (2, 'abe'), (3, 'cat')")
+    PG_CONN.exec("INSERT INTO tags (name) VALUES ('feline'), ('canine')")
+    PG_CONN.exec("INSERT INTO pets (dataset_id, tag_id, name) VALUES (1, 2, 'rex'), (2, 1, 'abe'), (3, 2, 'cat')")
   end
 
   describe "#join" do
@@ -43,6 +47,35 @@ describe "PGI::Dataset joins" do
     it "rejects a missing or empty on-mapping" do
       _(-> { repo.join(:pets, on: {}) }).must_raise RuntimeError
       _(-> { repo.join(:pets, on: nil) }).must_raise RuntimeError
+    end
+  end
+
+  describe "#join with a second hop" do
+    it "qualifies an on-key with a previously joined table" do
+      repo
+        .join(:pets, on: { id: :dataset_id })
+        .join(:tags, on: { { pets: :tag_id } => :id })
+        .tap do |query|
+          _(query.sql).must_match(
+            /INNER JOIN "pets" ON "dataset"\."id" = "pets"\."dataset_id" INNER JOIN "tags" ON "pets"\."tag_id" = "tags"\."id"/
+          )
+        end
+    end
+
+    it "filters base rows across the two-hop chain" do
+      rows = repo
+             .join(:pets, on: { id: :dataset_id })
+             .join(:tags, on: { { pets: :tag_id } => :id })
+             .where(tags: { name: "feline" })
+             .to_a
+
+      # only ann's pet (abe) is tagged feline
+      _(rows.map { |r| r["name"] }).must_equal %w[ann]
+      _(rows.first.keys.sort).must_equal %w[age id name]
+    end
+
+    it "rejects an on-key qualified with a table not yet joined" do
+      _(-> { repo.join(:tags, on: { { pets: :tag_id } => :id }) }).must_raise RuntimeError
     end
   end
 

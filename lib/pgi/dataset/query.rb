@@ -33,6 +33,12 @@ module PGI
       # the select list stays the base table's columns, so result rows map to
       # the base model unchanged. Identifiers only - never parameterized.
       #
+      # An on-mapping key is a bare column (qualified with the base table) or a
+      # { table => column } pair that qualifies it with a previously joined
+      # table - the same grammar #order/#where accept. That is what enables a
+      # second hop: join A to the base, then join B to A. The referenced table
+      # must already be joined, so declare joins in dependency order.
+      #
       # Notes:
       # - a Dataset :scope with unqualified columns becomes ambiguous once a
       #   join shares a column name - qualify scope columns to combine them
@@ -41,7 +47,9 @@ module PGI
       #   boundaries are ill-defined and the cursor lookup will fail
       #
       # @param table [Symbol] the table to join
-      # @param on [Hash] base-table column(s) => joined-table column(s)
+      # @param on [Hash] key column(s) => joined-table column(s); a key may be a
+      #   bare base-table column or a { table => column } pair naming the base
+      #   table or an already-joined table
       # @raise [RuntimeError] if the table name or on-mapping is invalid
       # @return [Query] return the Query instance (for method chaining)
       def join(table, on:)
@@ -49,7 +57,7 @@ module PGI
         raise "JOIN on: must map base column(s) to joined column(s)" unless on.is_a?(Hash) && !on.empty?
 
         conditions = on.map do |base_col, joined_col|
-          "#{Utils.sanitize_column(base_col, @table)} = #{Utils.sanitize_column(joined_col, table)}"
+          "#{qualified_column(base_col)} = #{Utils.sanitize_column(joined_col, table)}"
         end.join(" AND ")
 
         @join_tables << table.to_sym

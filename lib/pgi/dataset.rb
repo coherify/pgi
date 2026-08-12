@@ -138,7 +138,10 @@ module PGI
     # as data: joins: { users: { user_id: :id } } maps joined table => on
     # mapping, enabling qualified where ({ users: { name: "x" } }) and a
     # qualified sort_by ({ users: :name }). Keyset over a joined sort column
-    # requires at most one joined row per base row (e.g. FK -> PK).
+    # requires at most one joined row per base row (e.g. FK -> PK). An on-key
+    # may itself be qualified ({ { memberships: :user_id } => :id }) to chain a
+    # second hop off an earlier join; declare the joins in dependency order (an
+    # ordered Hash preserves it).
     #
     # @param where [Array] optional WHERE clause forwarded to Query#where
     # @param joins [Hash] joined table => on-mapping, forwarded to Query#join

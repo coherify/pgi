@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## Unreleased
+
+- `PGI::Dataset#join` / `#page(joins:)` — INNER JOINs for filtering and sorting
+  on combined rows (result rows stay the base table's, so model mapping is
+  unchanged). Qualified `where` (`{ users: { name: "x" } }`), qualified sort
+  (`{ users: :name }`) and keyset pagination over a joined sort column (FK -> PK
+  cardinality). Collation support on `#order`/`#keyset` for locale-aware text
+  ordering. An `on:` key may itself be qualified
+  (`{ { memberships: :user_id } => :id }`) to chain a second hop off an earlier
+  join; declare joins in dependency order.
+
 ## 1.0.0
 
 First public release.
