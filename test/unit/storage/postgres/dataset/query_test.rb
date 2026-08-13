@@ -70,6 +70,57 @@ describe PGI::Dataset::Query do
     end
   end
 
+  describe "#search" do
+    it "builds an OR-group of ILIKE matches binding one param per term" do
+      query.search(%i[name age], ["joe"]).tap do |q|
+        _(q.sql).must_match(/WHERE \("dataset"\."name" ILIKE \$1 OR "dataset"\."age" ILIKE \$1\)/)
+        _(q.params).must_equal ["%joe%"]
+      end
+    end
+
+    it "AND's an OR-group per term, each binding its own param" do
+      query.search([:name], %w[joe smith]).tap do |q|
+        _(q.sql).must_match(/WHERE \("dataset"\."name" ILIKE \$1\) AND \("dataset"\."name" ILIKE \$2\)/)
+        _(q.params).must_equal ["%joe%", "%smith%"]
+      end
+    end
+
+    it "escapes LIKE metacharacters so they match literally" do
+      query.search([:name], ["50%_off\\"]).tap do |q|
+        _(q.params).must_equal ["%50\\%\\_off\\\\%"]
+      end
+    end
+
+    it "accepts a { table => column } qualified column" do
+      query.search([{ dataset: :name }], ["joe"]).tap do |q|
+        _(q.sql).must_match(/"dataset"\."name" ILIKE \$1/)
+      end
+    end
+
+    it "is a no-op for empty columns, empty terms or blank-only terms" do
+      _(query.search([], ["joe"]).sql).wont_match(/ILIKE/)
+      _(query.search([:name], []).sql).wont_match(/ILIKE/)
+      query.search([:name], ["", "  "]).tap do |q|
+        _(q.sql).wont_match(/ILIKE/)
+        _(q.params).must_equal []
+      end
+    end
+
+    it "AND's the search into an existing WHERE clause" do
+      query.where(age: 25).search([:name], ["joe"]).tap do |q|
+        _(q.sql).must_match(/WHERE \("dataset"\."name" ILIKE \$2\) AND \("dataset"\."age" = \$1\)/)
+        _(q.params).must_equal [25, "%joe%"]
+      end
+    end
+
+    it "combines with a keyset cursor predicate" do
+      query.search([:name], ["joe"]).keyset(:id, 5, :asc).tap do |q|
+        _(q.sql).must_match(/WHERE "dataset"\."id" > \$2 AND \(\("dataset"\."name" ILIKE \$1\)\)/)
+        _(q.params).must_equal ["%joe%", 5]
+      end
+    end
+  end
+
   describe "#limit" do
     it "sets a limit clause" do
       _(query.limit(3).sql).must_match(/LIMIT 3/)

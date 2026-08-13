@@ -21,6 +21,31 @@ module PGI
       Query.new(@database, @table, nil, **@options).where(*)
     end
 
+    # Start a query with an INNER JOIN so WHERE/ORDER BY can reference the
+    # joined table's columns (filtering and sorting only - result rows stay
+    # base-table rows). Like #where, the returned Query yields raw row hashes;
+    # model mapping is the privilege of Dataset methods - for a paginated,
+    # model-mapped joined read use #page with the joins: keyword.
+    #
+    # @param table [Symbol] the table to join
+    # @param on [Hash] base-table column(s) => joined-table column(s)
+    # @return [Query]
+    def join(table, on:)
+      Query.new(@database, @table, nil, **@options).join(table, on: on)
+    end
+
+    # Start a query with a case-insensitive substring search across the given
+    # columns (see Query#search). Like #where/#join the returned Query yields
+    # raw row hashes; for a paginated, model-mapped search use #page with the
+    # search: keyword.
+    #
+    # @param columns [Array] the text columns to match against
+    # @param terms [Array<String>] search terms, already tokenised by the caller
+    # @return [Query]
+    def search(columns, terms)
+      Query.new(@database, @table, nil, **@options).search(columns, terms)
+    end
+
     # Insert new row
     #
     # @param args [Hash|Object] row data
@@ -121,10 +146,31 @@ module PGI
     # @param size [Integer] number of rows per page
     # @param sort_by [Symbol] column to sort by
     # @param sort_dir [Symbol] :asc or :desc
+    # Joins (filter/sort only - result rows stay base-table rows) are passed
+    # as data: joins: { users: { user_id: :id } } maps joined table => on
+    # mapping, enabling qualified where ({ users: { name: "x" } }) and a
+    # qualified sort_by ({ users: :name }). Keyset over a joined sort column
+    # requires at most one joined row per base row (e.g. FK -> PK). An on-key
+    # may itself be qualified ({ { memberships: :user_id } => :id }) to chain a
+    # second hop off an earlier join; declare the joins in dependency order (an
+    # ordered Hash preserves it).
+    #
     # @param where [Array] optional WHERE clause forwarded to Query#where
+    # @param joins [Hash] joined table => on-mapping, forwarded to Query#join
+    # @param search [Hash, nil] { columns:, terms: } forwarded to Query#search -
+    #   a substring search AND'ed into the WHERE, keyset-compatible (it only
+    #   adds a predicate; the cursor stays on the sort column). Columns may be
+    #   qualified with a joined table, so a search can span the same joins.
+    # @param collate [String, nil] collation for the sort column (e.g.
+    #   "da-x-icu"), forwarded to Query#keyset
     # @return [Array] list of Models or Hashes
-    def page(cursor = nil, size = 10, sort_by = :id, sort_dir = :asc, *where)
-      _to_models Query.new(@database, @table, nil, **@options).where(*where).limit(size).keyset(sort_by, cursor, sort_dir).to_a
+    def page(cursor = nil, size = 10, sort_by = :id, sort_dir = :asc, *where, joins: {}, search: nil, collate: nil)
+      query = Query.new(@database, @table, nil, **@options)
+      joins.each { |table, on| query.join(table, on: on) }
+      query.where(*where)
+      query.search(search[:columns], search[:terms]) if search
+
+      _to_models query.limit(size).keyset(sort_by, cursor, sort_dir, collate: collate).to_a
     end
 
     private
