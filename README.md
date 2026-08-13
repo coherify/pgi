@@ -146,6 +146,28 @@ Notes:
 - A `scope:` with unqualified columns becomes ambiguous once a join shares a
   column name — qualify the scope's columns (e.g. `members.deleted_at IS NULL`).
 
+### Search
+
+`#search(columns, terms)` adds a case-insensitive substring search and AND's it
+into the WHERE clause. Each term becomes an OR-group of `ILIKE` matches across
+every column; the groups are AND'ed together — a term hits when **any** column
+contains it, and a row matches only when **every** term hits somewhere (a search
+box that narrows as words are added). Tokenising the query string is the
+caller's job; pass the terms as an array.
+
+```ruby
+# Rows where each of "john" and "smith" appears in the name OR email.
+Repository.page(cursor, 20, :name, :asc,
+                search: { columns: [{ users: :name }, { users: :email }],
+                          terms:   %w[john smith] },
+                joins:  { users: { user_id: :id } })
+```
+
+LIKE metacharacters (`% _ \`) in a term are escaped so they match literally;
+blank terms are dropped. Columns take the same `{ table => column }` grammar as
+`#where`, so a search spans the same joins. It only adds a predicate, so it is
+**keyset-compatible** — the cursor stays on the sort column.
+
 ### Constraints
 
 - **`sort_by` columns must be `NOT NULL`.** SQL row comparison with NULL yields NULL, so rows with a NULL sort value are silently excluded from every cursor page — and if the anchor row itself has a NULL sort value, the next page comes back empty mid-stream.

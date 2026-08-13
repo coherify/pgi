@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `PGI::Dataset#search` / `#page(search:)` — case-insensitive substring search:
+  an OR-group of `ILIKE` matches per term, AND'ed together and into the WHERE.
+  LIKE metacharacters are escaped; columns may be qualified with a joined table,
+  so a search spans the same joins; keyset-compatible (adds only a predicate).
 - `PGI::Dataset#join` / `#page(joins:)` — INNER JOINs for filtering and sorting
   on combined rows (result rows stay the base table's, so model mapping is
   unchanged). Qualified `where` (`{ users: { name: "x" } }`), qualified sort

@@ -34,6 +34,18 @@ module PGI
       Query.new(@database, @table, nil, **@options).join(table, on: on)
     end
 
+    # Start a query with a case-insensitive substring search across the given
+    # columns (see Query#search). Like #where/#join the returned Query yields
+    # raw row hashes; for a paginated, model-mapped search use #page with the
+    # search: keyword.
+    #
+    # @param columns [Array] the text columns to match against
+    # @param terms [Array<String>] search terms, already tokenised by the caller
+    # @return [Query]
+    def search(columns, terms)
+      Query.new(@database, @table, nil, **@options).search(columns, terms)
+    end
+
     # Insert new row
     #
     # @param args [Hash|Object] row data
@@ -145,14 +157,20 @@ module PGI
     #
     # @param where [Array] optional WHERE clause forwarded to Query#where
     # @param joins [Hash] joined table => on-mapping, forwarded to Query#join
+    # @param search [Hash, nil] { columns:, terms: } forwarded to Query#search -
+    #   a substring search AND'ed into the WHERE, keyset-compatible (it only
+    #   adds a predicate; the cursor stays on the sort column). Columns may be
+    #   qualified with a joined table, so a search can span the same joins.
     # @param collate [String, nil] collation for the sort column (e.g.
     #   "da-x-icu"), forwarded to Query#keyset
     # @return [Array] list of Models or Hashes
-    def page(cursor = nil, size = 10, sort_by = :id, sort_dir = :asc, *where, joins: {}, collate: nil)
+    def page(cursor = nil, size = 10, sort_by = :id, sort_dir = :asc, *where, joins: {}, search: nil, collate: nil)
       query = Query.new(@database, @table, nil, **@options)
       joins.each { |table, on| query.join(table, on: on) }
+      query.where(*where)
+      query.search(search[:columns], search[:terms]) if search
 
-      _to_models query.where(*where).limit(size).keyset(sort_by, cursor, sort_dir, collate: collate).to_a
+      _to_models query.limit(size).keyset(sort_by, cursor, sort_dir, collate: collate).to_a
     end
 
     private

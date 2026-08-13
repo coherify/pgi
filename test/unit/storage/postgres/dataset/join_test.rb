@@ -135,6 +135,31 @@ describe "PGI::Dataset joins" do
     end
   end
 
+  describe "#search" do
+    it "starts a query that matches rows by substring" do
+      rows = repo.search([:name], ["ar"]).to_a
+      _(rows.map { |r| r["name"] }).must_equal %w[carl]
+    end
+
+    it "AND's tokens - all must hit somewhere" do
+      _(repo.search([:name], %w[car l]).to_a.map { |r| r["name"] }).must_equal %w[carl]
+      _(repo.search([:name], %w[car z]).to_a).must_equal []
+    end
+  end
+
+  describe "Dataset#page with search" do
+    it "filters the page by a base-column substring, keyset-compatible" do
+      rows = repo.page(nil, 10, :id, :asc, search: { columns: [:name], terms: ["a"] })
+      _(rows.map { |r| r["name"] }).must_equal %w[ann carl] # joe has no 'a', id asc
+    end
+
+    it "searches across a joined column" do
+      rows = repo.page(nil, 10, :id, :asc, joins: { pets: { id: :dataset_id } }, search: { columns: [{ pets: :name }], terms: ["re"] })
+      _(rows.map { |r| r["name"] }).must_equal %w[joe] # only rex matches
+      _(rows.first.keys.sort).must_equal %w[age id name]
+    end
+  end
+
   describe "#count with joins" do
     it "counts the joined result set" do
       count = repo.join(:pets, on: { id: :dataset_id }).where(pets: { name: "rex" }).count

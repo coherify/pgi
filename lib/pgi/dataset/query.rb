@@ -111,6 +111,40 @@ module PGI
         self
       end
 
+      # Adds a case-insensitive substring search and AND's it into the WHERE
+      # clause. Each term becomes an OR-group of ILIKE matches across every
+      # given column; the groups are AND'ed together. So a term hits when ANY
+      # column contains it, and a row matches only when EVERY term hits
+      # somewhere - the shape of a search box that narrows as words are added.
+      # Each term binds a single %term% parameter, shared by its OR-group.
+      #
+      # LIKE metacharacters (% _ \) in a term are escaped so they match
+      # literally. Blank terms are dropped; empty columns or terms are a no-op.
+      # Like #keyset, this combines with an existing WHERE (call it after
+      # #where), so it does not raise the "already set" guard.
+      #
+      # Columns take the same grammar as #where/#order - a bare column
+      # (qualified with the base table) or a { table => column } pair naming the
+      # base table or an already-joined table - so a search can span joins.
+      #
+      # @param columns [Array] the text columns to match against
+      # @param terms [Array<String>] search terms, already tokenised by the caller
+      # @return [Query] return the Query instance (for method chaining)
+      def search(columns, terms)
+        columns = Array(columns)
+        terms   = Array(terms).reject { |t| t.to_s.strip.empty? }
+        return self if columns.empty? || terms.empty?
+
+        groups = terms.map do |term|
+          @params << "%#{escape_like(term)}%"
+          placeholder = "$#{@params.size}"
+          "(#{columns.map { |col| "#{qualified_column(col)} ILIKE #{placeholder}" }.join(" OR ")})"
+        end.join(" AND ")
+
+        @where = @where ? "#{groups} AND (#{@where})" : groups
+        self
+      end
+
       # Adds a ORDER BY clause to the query - suports multiple calls to the method
       #
       # @param column [Symbol, Hash] the column - a single-pair Hash qualifies
@@ -288,6 +322,13 @@ module PGI
         table, col = column.first
         assert_known_table!(table)
         Utils.sanitize_column(col, table)
+      end
+
+      # Escape LIKE/ILIKE metacharacters (\ % _) so a search term matches
+      # literally. Backslash is Postgres' default LIKE escape character, so no
+      # ESCAPE clause is needed - the escaped value binds straight as a param.
+      def escape_like(term)
+        term.to_s.gsub(/[\\%_]/) { |c| "\\#{c}" }
       end
 
       def assert_known_table!(table)
