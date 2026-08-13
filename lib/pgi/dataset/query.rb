@@ -26,6 +26,7 @@ module PGI
         @returning = options.fetch(:returning, nil)
         @joins       = []
         @join_tables = []
+        @select      = []
       end
 
       # Adds an INNER JOIN so WHERE/ORDER BY/keyset can reference the joined
@@ -62,6 +63,33 @@ module PGI
 
         @join_tables << table.to_sym
         @joins << %(INNER JOIN "#{table}" ON #{conditions})
+        self
+      end
+
+      # Appends columns to the projection so a joined read can return a joined
+      # table's columns alongside the base table's `"base".*` - the one thing
+      # #join deliberately does not do (it is filter/sort only). Because the
+      # projected column is by definition absent from the base model's schema,
+      # a Query with #select yields RAW row hashes only; it never threads
+      # through #page/#all model mapping. Identifiers only - never parameterized.
+      #
+      # Columns take the same grammar as #join/#where/#order plus an alias form:
+      # - a bare column               -> qualified with the base table
+      # - a { table => column } pair  -> qualified with the base or a joined
+      #                                  table (which must already be joined)
+      # - a { table => { column => alias } } pair -> the above, AS "alias"
+      #
+      # "base".* is opaque (pgi has no schema introspection), so a joined column
+      # sharing a base column's name cannot be caught here - it surfaces as a
+      # duplicate field name when the rows come back, where #first/#to_a/#each
+      # RAISE rather than silently clobber. Pre-empt it with the alias form.
+      #
+      # @param columns [Array<Symbol, Hash>] columns to append to the projection
+      # @raise [RuntimeError] if a column reference or alias mapping is malformed
+      #   or names an unknown table
+      # @return [Query] return the Query instance (for method chaining)
+      def select(*columns)
+        columns.each { |column| @select << projected_column(column) }
         self
       end
 
@@ -223,11 +251,17 @@ module PGI
         scope << " AND " if scope && @where
 
         command = @command.dup
-        if @joins.any? && command.start_with?("SELECT")
+        if command.start_with?("SELECT") && (@joins.any? || @select.any?)
           # Joins are filter/sort-only: qualify the default star so joined
-          # columns never leak into result rows (and never collide).
-          command = %(SELECT "#{@table}".* FROM #{@table}) if command == "SELECT * FROM #{@table}"
-          command << " #{@joins.join(" ")}"
+          # columns never leak into result rows (and never collide). #select
+          # then appends its explicitly-projected joined columns onto it.
+          extra = @select.empty? ? "" : ", #{@select.join(", ")}"
+          if command == "SELECT * FROM #{@table}"
+            command = %(SELECT "#{@table}".*#{extra} FROM #{@table})
+          elsif @select.any?
+            command = command.sub(" FROM #{@table}", "#{extra} FROM #{@table}")
+          end
+          command << " #{@joins.join(" ")}" if @joins.any?
         end
         command << " WHERE #{scope}#{@where}" if @where || scope
         command << " ORDER BY #{Array(@order).map { |x| x.join(" ") }.join(", ")}" unless @order.empty?
@@ -246,25 +280,19 @@ module PGI
       # @return [Hash]
       def first
         limit(1)
-        @database
-          .exec_stmt(Utils.stmt_name(@table, sql), sql, params)
-          .first
+        result.first
       end
 
       # Get all the records in a result set
       #
       # @return [Array] Array of records as Hashes
       def to_a
-        @database
-          .exec_stmt(Utils.stmt_name(@table, sql), sql, params)
-          .to_a
+        result.to_a
       end
 
       # Loop through records in a result set
       def each(&)
-        @database
-          .exec_stmt(Utils.stmt_name(@table, sql), sql, params)
-          .each(&)
+        result.each(&)
       end
 
       # Explain some query
@@ -294,6 +322,7 @@ module PGI
       def count
         @command = "SELECT COUNT(*) FROM #{@table}"
         @order   = {}
+        @select  = [] # projection is irrelevant to a COUNT (and would corrupt it)
         first&.fetch("count", 0)
       end
 
@@ -306,6 +335,53 @@ module PGI
       alias inspect to_s
 
       private
+
+      # Run the query and guard against a projected-column name collision
+      # before the rows are handed back (see #select).
+      #
+      # @return [PG::Result]
+      def result
+        res = @database.exec_stmt(Utils.stmt_name(@table, sql), sql, params)
+        assert_projection_unambiguous!(res)
+        res
+      end
+
+      # Raise if #select projected two columns onto the same result field name
+      # (a joined column clashing with a base column, or two joined columns) -
+      # the row hash would silently keep only the last, losing data. Only
+      # relevant when #select added columns; a plain base.* read cannot clash.
+      #
+      # @param result [PG::Result]
+      # @raise [RuntimeError] listing the duplicated field name(s)
+      def assert_projection_unambiguous!(result)
+        return if @select.empty?
+
+        dups = result.fields.tally.select { |_, n| n > 1 }.keys
+        return if dups.empty?
+
+        raise "Ambiguous projected column(s): #{dups.join(", ")} - alias with " \
+              "select(table => { column: :alias }) to disambiguate"
+      end
+
+      # Render a #select column: a bare column (base table), a { table => column }
+      # pair (qualified), or a { table => { column => alias } } pair (qualified,
+      # AS "alias").
+      #
+      # @param column [Symbol, Hash] the column reference
+      # @raise [RuntimeError] if the Hash form is malformed or names an unknown table
+      # @return [String] the sanitized projection fragment
+      def projected_column(column)
+        return qualified_column(column) unless column.is_a?(Hash) && column.values.first.is_a?(Hash)
+
+        raise "Aliased column must be a single { table => { column => alias } } pair" unless column.size == 1
+
+        table, mapping = column.first
+        raise "Aliased column must map a single column to a single alias" unless mapping.size == 1
+
+        col, as = mapping.first
+        assert_known_table!(table)
+        "#{Utils.sanitize_column(col, table)} AS #{Utils.sanitize_column(as)}"
+      end
 
       # Sanitize a column reference: a bare column qualifies with the base
       # table; a single-pair Hash ({ users: :name }) qualifies with that table,
