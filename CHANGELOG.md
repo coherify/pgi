@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `PGI::Query#select` — append qualified columns to a joined read's projection
+  so it can return a joined table's columns alongside `"base".*` (`#join` stays
+  filter/sort-only). Bare / `{ table => column }` / `{ table => { column => alias } }`
+  grammar. Raw row hashes only (no model mapping); a projected column colliding
+  with a base column name raises when the rows come back — alias to disambiguate.
 - `PGI::Dataset#search` / `#page(search:)` — case-insensitive substring search:
   an OR-group of `ILIKE` matches per term, AND'ed together and into the WHERE.
   LIKE metacharacters are escaped; columns may be qualified with a joined table,

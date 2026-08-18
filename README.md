@@ -146,6 +146,32 @@ Notes:
 - A `scope:` with unqualified columns becomes ambiguous once a join shares a
   column name — qualify the scope's columns (e.g. `members.deleted_at IS NULL`).
 
+### Projecting joined columns
+
+`#join` is filter/sort-only — the projection stays `"base".*`. To also **return**
+a joined table's column, append it with `#select`:
+
+```ruby
+# Teams the base row belongs to, plus the roster row's `owner` flag.
+Repository.join(:teammates, on: { id: :team_id })
+          .join(:memberships, on: { { teammates: :membership_id } => :id })
+          .select({ teammates: :owner })
+          .where(memberships: { user_id: user_id })
+          .to_a
+# SELECT "teams".*, "teammates"."owner" FROM teams INNER JOIN ...
+```
+
+`#select` takes the same grammar as `#join`/`#where`: a bare column (qualified
+with the base table) or a `{ table => column }` pair. An alias form
+`{ table => { column => alias } }` renders `AS "alias"`.
+
+Because a projected joined column is by definition absent from the base model's
+schema, a `Query` carrying `#select` yields **raw row hashes only** — it never
+threads through `#page`/`#all` model mapping. `"base".*` is opaque (pgi has no
+schema introspection), so a joined column that shares a base column's name
+cannot be caught up front; it surfaces as a duplicate result field and `#to_a`/
+`#first`/`#each` **raise**. Pre-empt it with the alias form.
+
 ### Search
 
 `#search(columns, terms)` adds a case-insensitive substring search and AND's it
