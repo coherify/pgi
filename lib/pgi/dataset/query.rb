@@ -53,16 +53,17 @@ module PGI
       #   table or an already-joined table
       # @raise [RuntimeError] if the table name or on-mapping is invalid
       # @return [Query] return the Query instance (for method chaining)
-      def join(table, on:)
+      def join(table, on:, type: :inner)
         raise "Invalid JOIN table: #{table.inspect}" unless table.to_s.match?(TABLE_NAME)
         raise "JOIN on: must map base column(s) to joined column(s)" unless on.is_a?(Hash) && !on.empty?
+        raise "Invalid JOIN type: #{type.inspect}" unless %i[inner left].include?(type)
 
         conditions = on.map do |base_col, joined_col|
           "#{qualified_column(base_col)} = #{Utils.sanitize_column(joined_col, table)}"
         end.join(" AND ")
 
         @join_tables << table.to_sym
-        @joins << %(INNER JOIN "#{table}" ON #{conditions})
+        @joins << %(#{type == :left ? "LEFT" : "INNER"} JOIN "#{table}" ON #{conditions})
         self
       end
 

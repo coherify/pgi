@@ -30,8 +30,8 @@ module PGI
     # @param table [Symbol] the table to join
     # @param on [Hash] base-table column(s) => joined-table column(s)
     # @return [Query]
-    def join(table, on:)
-      Query.new(@database, @table, nil, **@options).join(table, on: on)
+    def join(table, on:, type: :inner)
+      Query.new(@database, @table, nil, **@options).join(table, on: on, type: type)
     end
 
     # Start a query with a case-insensitive substring search across the given

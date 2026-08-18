@@ -217,5 +217,18 @@ describe "PGI::Dataset joins" do
     it "rejects a column qualified with a table not joined" do
       _(-> { repo.join(:pets, on: { id: :dataset_id }).select({ cats: :name }) }).must_raise RuntimeError
     end
+
+    it "emits a LEFT JOIN when asked - optional relations keep the base row" do
+      repo.join(:pets, on: { id: :dataset_id }, type: :left).tap do |query|
+        _(query.sql).must_match(/LEFT JOIN "pets" ON "dataset"\."id" = "pets"\."dataset_id"/)
+      end
+    end
+
+    it "refuses unknown join types" do
+      e = assert_raises RuntimeError do
+        repo.join(:pets, on: { id: :dataset_id }, type: :outer)
+      end
+      _(e.message).must_equal "Invalid JOIN type: :outer"
+    end
   end
 end
