@@ -125,7 +125,11 @@ module PGI
             end
           end.join(" AND ")
         when String
-          raise "Use placeholders in WHERE clause" if clause =~ /=(?!\s*[?$])/
+          # The guard lints against inlined VALUES - quoted strings and bare
+          # numbers, the injection surface. Identifiers (join conditions,
+          # subqueries), keywords (true/NULL) and constructs like = ANY($n)
+          # are legitimate parameterized SQL and pass (issue #19).
+          raise "Use placeholders in WHERE clause" if clause =~ /[=<>]\s*-?\s*['0-9]/
 
           offset = @params.size
           @params += params

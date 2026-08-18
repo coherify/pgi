@@ -63,10 +63,25 @@ describe PGI::Dataset::Query do
     end
 
     it "raises error on values instead of placeholders" do
-      e = assert_raises RuntimeError do
-        query.where("name = 'joe'")
+      ["name = 'joe'", "age = 42", "age >= 42", "age > -1", "name != 'x'"].each do |clause|
+        e = assert_raises RuntimeError do
+          query.where(clause)
+        end
+        _(e.message).must_equal "Use placeholders in WHERE clause"
       end
-      _(e.message).must_equal "Use placeholders in WHERE clause"
+    end
+
+    it "allows identifiers, keywords, subqueries and ANY in WHERE strings (issue #19)" do
+      [
+        "a.id = b.a_id",
+        "accepted = true",
+        "deleted_at IS NULL AND team_id = ANY($1::uuid[])",
+        "account_id IN (SELECT account_id FROM memberships WHERE user_id = $1 AND accepted = true)"
+      ].each do |clause|
+        query.where(clause, [1]).tap do |q|
+          _(q.sql).must_match(/WHERE/)
+        end
+      end
     end
   end
 
