@@ -166,4 +166,56 @@ describe "PGI::Dataset joins" do
       _(count).must_equal 1
     end
   end
+
+  describe "#select projecting joined columns" do
+    it "appends a qualified joined column onto the base star" do
+      repo.join(:pets, on: { id: :dataset_id }).select({ pets: :tag_id }).tap do |query|
+        _(query.sql).must_match(/SELECT "dataset"\.\*, "pets"\."tag_id" FROM dataset INNER JOIN "pets"/)
+      end
+    end
+
+    it "appends a bare column qualified with the base table" do
+      repo.join(:pets, on: { id: :dataset_id }).select(:age).tap do |query|
+        _(query.sql).must_match(/SELECT "dataset"\.\*, "dataset"\."age" FROM dataset/)
+      end
+    end
+
+    it "appends onto a custom select list" do
+      repo.select(:name).join(:pets, on: { id: :dataset_id }).select({ pets: :tag_id }).tap do |query|
+        _(query.sql).must_match(/SELECT "dataset"\."name", "pets"\."tag_id" FROM dataset INNER JOIN/)
+      end
+    end
+
+    it "returns the projected joined column in the row hash via an alias" do
+      rows = repo
+             .join(:pets, on: { id: :dataset_id })
+             .select({ pets: { name: :pet_name } })
+             .order(:id)
+             .to_a
+
+      _(rows.first.keys.sort).must_equal %w[age id name pet_name]
+      _(rows.first["name"]).must_equal "joe"     # base column
+      _(rows.first["pet_name"]).must_equal "rex" # projected joined column
+    end
+
+    it "projects across a two-hop join chain" do
+      rows = repo
+             .join(:pets, on: { id: :dataset_id })
+             .join(:tags, on: { { pets: :tag_id } => :id })
+             .select({ tags: { name: :tag_name } })
+             .where(dataset: { name: "joe" })
+             .to_a
+
+      _(rows.first["tag_name"]).must_equal "canine" # joe's pet rex carries tag_id 2 (canine)
+    end
+
+    it "raises on a projected-column name collision" do
+      # pets.name collides with dataset.name - both land as "name"
+      _(-> { repo.join(:pets, on: { id: :dataset_id }).select({ pets: :name }).to_a }).must_raise RuntimeError
+    end
+
+    it "rejects a column qualified with a table not joined" do
+      _(-> { repo.join(:pets, on: { id: :dataset_id }).select({ cats: :name }) }).must_raise RuntimeError
+    end
+  end
 end
