@@ -46,14 +46,14 @@ class Repository
 end
 ```
 
-### Projections — declared computed columns
+### Projections — a declared catalog of computed columns, opted into per read
 
-`projections:` declares computed columns that ride **every read** of the
-dataset, additively (`*` plus the declared expressions), and every write's
-`RETURNING` — so the row shape is invariant: a found, listed, inserted or
-updated row all carry the same keys. The trust model is `scope:`'s,
-projection-side: the expression is raw SQL **authored at dataset-extension
-time**, never request data; the name passes the column sanitizer.
+`projections:` declares named computed columns at the dataset boundary —
+the `scope:` trust model, projection-side: the expression is raw SQL
+**authored at dataset-extension time**, never request data; the name passes
+the column sanitizer. Declaring costs nothing: a projection is only
+evaluated when a read **opts in** via `#project` (query chain) or
+`page(project:)` — cost stays a visible, per-read decision.
 
 ```ruby
 class TeamRepository
@@ -62,20 +62,26 @@ class TeamRepository
                       projections: { mates_count: "SELECT COUNT(*) FROM teammates WHERE team_id = teams.id" }]
 end
 
-TeamRepository.find(id)["mates_count"] # => 7, on every read AND write path
+TeamRepository.page(nil, 25, project: [:mates_count]) # the list pays for what it shows
+TeamRepository.project(:mates_count).where(id: id).first # chain form (raw rows)
+TeamRepository.find(id)                               # pays nothing
 ```
 
 Notes:
 
-- **Additive, always** — explicit `select(:id)` still appends the
-  projections; they are facts of the dataset, not a per-query favor.
-  `#count` skips them (an aggregate has no row to enrich).
-- **Cost**: evaluated per *output* row — after WHERE/LIMIT — so a paginated
-  read pays `page_size × subquery`. With an indexed correlate (e.g.
-  `teammates(team_id)`) that is an index-only probe per row. Sorting or
-  filtering **on** a projection promotes evaluation to the whole scope; that
-  EXPLAIN is the declarer's to own. If a projection ever measures hot, the
-  escalation is a trigger-maintained column, not a cleverer query.
+- **Opt-in, never ambient** — an unprojected read carries no projection
+  keys and pays no projection cost. Opting into an undeclared name raises.
+  `#count` ignores projections (an aggregate has no row to enrich).
+- **Writes shed projection keys** — a model round-trip (find → to_h →
+  update) may carry projected attributes; INSERT/UPDATE drop them silently.
+  Write RETURNING never projects: presence of a projected key means "this
+  read chose to know".
+- **Cost when opted in**: evaluated per *output* row — after WHERE/LIMIT —
+  so a paginated read pays `page_size × subquery`. With an indexed correlate
+  (e.g. `teammates(team_id)`) that is an index-only probe per row. Sorting
+  or filtering **on** a projection promotes evaluation to the whole scope;
+  that EXPLAIN is the caller's to own. If a projection ever measures hot,
+  the escalation is a trigger-maintained column, not a cleverer query.
 - A projection name colliding with a base column will overwrite it in the
   row hash — pick names that cannot collide (`mates_count`, not `count`).
 

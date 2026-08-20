@@ -46,6 +46,16 @@ module PGI
       Query.new(@database, @table, nil, **@options).search(columns, terms)
     end
 
+    # Start a query with declared projections opted in (see Query#project).
+    # Like #where, yields raw row hashes; for a paginated, model-mapped
+    # projected read use #page with the project: keyword.
+    #
+    # @param names [Array<Symbol>] declared projection names
+    # @return [Query]
+    def project(*names)
+      Query.new(@database, @table, nil, **@options).project(*names)
+    end
+
     # Insert new row
     #
     # @param args [Hash|Object] row data
@@ -66,9 +76,7 @@ module PGI
           " (#{columns.join(", ")}) VALUES (#{placeholders.join(", ")}) "
         end
 
-      _to_model Query.new(@database, @table, command,
-                          params: values,
-                          projections: @options.fetch(:projections, {})).limit(nil).to_a.first
+      _to_model Query.new(@database, @table, command, params: values).limit(nil).to_a.first
     end
 
     # Update row
@@ -85,9 +93,8 @@ module PGI
     def update!(id, **args)
       columns, placeholders, values = sql_params(args)
       set_clause = columns.zip(placeholders).map { |c, p| "#{c} = #{p}" }.join(", ")
-      returning = ["*", *Utils.projection_fragments(@options.fetch(:projections, {}))].join(", ")
       command = "UPDATE #{@table} SET #{set_clause} " \
-                "WHERE #{Utils.sanitize_column(:id)} = $#{values.size + 1} RETURNING #{returning}"
+                "WHERE #{Utils.sanitize_column(:id)} = $#{values.size + 1} RETURNING *"
 
       # TODO: Query throws `PG::IndeterminateDatatype: ERROR:  could not determine data type of parameter $2`
       # _to_model Query.new(@database, @table, command, params: values + [id]).where(id: id).limit(nil)
@@ -167,8 +174,10 @@ module PGI
     # @param collate [String, nil] collation for the sort column (e.g.
     #   "da-x-icu"), forwarded to Query#keyset
     # @return [Array] list of Models or Hashes
-    def page(cursor = nil, size = 10, sort_by = :id, sort_dir = :asc, *where, joins: {}, search: nil, collate: nil)
+    def page(cursor = nil, size = 10, sort_by = :id, sort_dir = :asc, *where, joins: {}, search: nil, collate: nil,
+             project: [])
       query = Query.new(@database, @table, nil, **@options)
+      query.project(*project) if project.any?
       joins.each { |table, on| query.join(table, on: on) }
       query.where(*where)
       query.search(search[:columns], search[:terms]) if search
