@@ -53,7 +53,7 @@ describe "PGI::Dataset projections" do
     row = repo.insert!(name: "ida", age: 4, answer: 99) # projection key ignored
     _(row["answer"]).must_equal 42
 
-    updated = repo.update!(row["id"], row.slice("name", "age", "answer").transform_keys(&:to_sym))
+    updated = repo.update!(row["id"], **row.slice("name", "age", "answer").transform_keys(&:to_sym))
     _(updated["answer"]).must_equal 42
   end
 
