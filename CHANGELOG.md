@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- `PGI::Dataset[..., projections: { name: "SQL expr" }]` — declared computed
+  columns (the `scope:` trust model, projection-side): additive on every read
+  (`*` plus `(expr) AS name`) and on every write's `RETURNING`, so the row
+  shape is invariant across find/list/insert/update. Names pass the column
+  sanitizer; expressions are trusted extension-time SQL. `#count` skips them.
+
 - `PGI::Query#select` — append qualified columns to a joined read's projection
   so it can return a joined table's columns alongside `"base".*` (`#join` stays
   filter/sort-only). Bare / `{ table => column }` / `{ table => { column => alias } }`

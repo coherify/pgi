@@ -29,6 +29,16 @@ module PGI
           "#{table}_#{Digest::MD5.hexdigest(sql)}"
         end
 
+        # Build "(expr) AS name" fragments from a projections declaration.
+        # Names pass the column sanitizer; expressions are TRUSTED raw SQL -
+        # authored at dataset-extension time like :scope, never request data.
+        #
+        # @param projections [Hash] name => SQL expression
+        # @return [Array<String>] fragments ready for a select/RETURNING list
+        def projection_fragments(projections)
+          projections.map { |name, expr| "(#{expr}) AS #{sanitize_column(name)}" }
+        end
+
         # Get a sanitized column name(s)
         #
         # @param columns [String|Array] the column name(s) to sanitize

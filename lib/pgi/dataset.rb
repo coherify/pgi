@@ -66,7 +66,9 @@ module PGI
           " (#{columns.join(", ")}) VALUES (#{placeholders.join(", ")}) "
         end
 
-      _to_model Query.new(@database, @table, command, params: values).limit(nil).to_a.first
+      _to_model Query.new(@database, @table, command,
+                          params: values,
+                          projections: @options.fetch(:projections, {})).limit(nil).to_a.first
     end
 
     # Update row
@@ -83,8 +85,9 @@ module PGI
     def update!(id, **args)
       columns, placeholders, values = sql_params(args)
       set_clause = columns.zip(placeholders).map { |c, p| "#{c} = #{p}" }.join(", ")
+      returning = ["*", *Utils.projection_fragments(@options.fetch(:projections, {}))].join(", ")
       command = "UPDATE #{@table} SET #{set_clause} " \
-                "WHERE #{Utils.sanitize_column(:id)} = $#{values.size + 1} RETURNING *"
+                "WHERE #{Utils.sanitize_column(:id)} = $#{values.size + 1} RETURNING #{returning}"
 
       # TODO: Query throws `PG::IndeterminateDatatype: ERROR:  could not determine data type of parameter $2`
       # _to_model Query.new(@database, @table, command, params: values + [id]).where(id: id).limit(nil)
@@ -205,6 +208,11 @@ module PGI
     class << self
       def [](database, table, **options)
         raise "Invalid table name: #{table}" unless table.to_s =~ /\A[a-z_][a-z0-9_]*\z/
+
+        options.fetch(:projections, {}).each do |name, expr|
+          raise "Invalid projection name: #{name.inspect}" unless Utils.valid_column?(name) && name.to_s != "*"
+          raise "Invalid projection expression for #{name.inspect}" unless expr.is_a?(String) && !expr.strip.empty?
+        end
 
         mod = clone
         mod.instance_variable_set("@database", database)

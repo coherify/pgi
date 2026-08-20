@@ -24,6 +24,10 @@ module PGI
         @order     = options.fetch(:order, {})
         @limit     = options.fetch(:limit, 10)
         @returning = options.fetch(:returning, nil)
+        # Declared computed columns (see Dataset projections:) - additive to
+        # the select list and to RETURNING, so the row shape is invariant
+        # across reads and writes. Skipped by #count (an aggregate has no row).
+        @projections = options.fetch(:projections, {})
         @joins       = []
         @join_tables = []
         @select      = []
@@ -268,10 +272,18 @@ module PGI
           end
           command << " #{@joins.join(" ")}" if @joins.any?
         end
+        if @projections.any? && command.start_with?("SELECT") && command.include?(" FROM #{@table}")
+          # Additive: base columns plus the declared computed columns
+          fragments = Utils.projection_fragments(@projections).join(", ")
+          command = command.sub(" FROM #{@table}", ", #{fragments} FROM #{@table}")
+        end
         command << " WHERE #{scope}#{@where}" if @where || scope
         command << " ORDER BY #{Array(@order).map { |x| x.join(" ") }.join(", ")}" unless @order.empty?
         command << " LIMIT #{@limit}" if @limit
-        command << " RETURNING *" if @command =~ /^UPDATE|INSERT|DELETE/
+        if @command =~ /^UPDATE|INSERT|DELETE/
+          returning = ["*", *Utils.projection_fragments(@projections)].join(", ")
+          command << " RETURNING #{returning}"
+        end
         command
       end
 
@@ -327,7 +339,8 @@ module PGI
       def count
         @command = "SELECT COUNT(*) FROM #{@table}"
         @order   = {}
-        @select  = [] # projection is irrelevant to a COUNT (and would corrupt it)
+        @select      = [] # projection is irrelevant to a COUNT (and would corrupt it)
+        @projections = {} # likewise: an aggregate has no row to enrich
         first&.fetch("count", 0)
       end
 
