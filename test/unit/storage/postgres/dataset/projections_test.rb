@@ -49,6 +49,14 @@ describe "PGI::Dataset projections" do
     _(repo.count).must_equal repo.all.size
   end
 
+  it "sheds projection keys from writes - the model round-trip just works" do
+    row = repo.insert!(name: "ida", age: 4, answer: 99) # projection key ignored
+    _(row["answer"]).must_equal 42
+
+    updated = repo.update!(row["id"], row.slice("name", "age", "answer").transform_keys(&:to_sym))
+    _(updated["answer"]).must_equal 42
+  end
+
   it "rejects invalid declarations at extension time" do
     _ { PGI::Dataset[PG_CONN, :dataset, projections: { "bad name" => "SELECT 1" }] }.must_raise RuntimeError
     _ { PGI::Dataset[PG_CONN, :dataset, projections: { ok: "  " }] }.must_raise RuntimeError
