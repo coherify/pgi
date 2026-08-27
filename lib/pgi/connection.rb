@@ -24,6 +24,11 @@ module PGI
 
         new_conn.type_map_for_results = PG::BasicTypeMapForResults.new(new_conn, registry: regi)
         new_conn.type_map_for_queries = PG::BasicTypeMapForQueries.new(new_conn, registry: regi)
+
+        # Server notices (a DROP CASCADE's chatter, a RAISE NOTICE) route to
+        # the configured logger instead of libpq's stderr default: a library
+        # that accepts a logger must not print around it.
+        new_conn.set_notice_processor { |msg| @logger&.debug(msg.strip) }
       end || raise("no connection provided")
     end
 
