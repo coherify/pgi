@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- `PGI::Dataset[..., projections: { name: "SQL expr" }]` — a declared catalog
+  of computed columns (the `scope:` trust model, projection-side), opted into
+  per read via `#project(*names)` / `page(project: [...])`: never evaluated
+  unless asked, so cost is a visible per-read decision. Names pass the column
+  sanitizer; unknown names raise at `#project`; `#count` ignores them; writes
+  shed projected attribute keys so model round-trips just work.
+
 - `PGI::Query#select` — append qualified columns to a joined read's projection
   so it can return a joined table's columns alongside `"base".*` (`#join` stays
   filter/sort-only). Bare / `{ table => column }` / `{ table => { column => alias } }`

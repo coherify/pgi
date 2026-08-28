@@ -24,9 +24,29 @@ module PGI
         @order     = options.fetch(:order, {})
         @limit     = options.fetch(:limit, 10)
         @returning = options.fetch(:returning, nil)
+        # Declared computed columns (see Dataset projections:) - the catalog
+        # a read may opt into via #project. Never evaluated unless asked:
+        # cost is a visible, per-read decision.
+        @projections = options.fetch(:projections, {})
+        @projected   = []
         @joins       = []
         @join_tables = []
         @select      = []
+      end
+
+      # Opt into declared projections for THIS read: the named computed
+      # columns join the select list as (expr) AS name. Names must be
+      # declared on the dataset (the trust boundary stays at extension
+      # time); unknown names raise.
+      #
+      # @param names [Array<Symbol>] declared projection names
+      # @return [Query] the Query instance (for method chaining)
+      def project(*names)
+        unknown = names.map(&:to_sym) - @projections.keys.map(&:to_sym)
+        raise "Unknown projection(s): #{unknown.inspect}" unless unknown.empty?
+
+        @projected |= names.map(&:to_sym)
+        self
       end
 
       # Adds an INNER JOIN so WHERE/ORDER BY/keyset can reference the joined
@@ -268,6 +288,11 @@ module PGI
           end
           command << " #{@joins.join(" ")}" if @joins.any?
         end
+        if @projected.any? && command.start_with?("SELECT") && command.include?(" FROM #{@table}")
+          # Additive: base columns plus the OPTED-IN computed columns
+          fragments = Utils.projection_fragments(@projections.slice(*@projected)).join(", ")
+          command = command.sub(" FROM #{@table}", ", #{fragments} FROM #{@table}")
+        end
         command << " WHERE #{scope}#{@where}" if @where || scope
         command << " ORDER BY #{Array(@order).map { |x| x.join(" ") }.join(", ")}" unless @order.empty?
         command << " LIMIT #{@limit}" if @limit
@@ -327,7 +352,8 @@ module PGI
       def count
         @command = "SELECT COUNT(*) FROM #{@table}"
         @order   = {}
-        @select  = [] # projection is irrelevant to a COUNT (and would corrupt it)
+        @select    = [] # projection is irrelevant to a COUNT (and would corrupt it)
+        @projected = [] # likewise: an aggregate has no row to enrich
         first&.fetch("count", 0)
       end
 

@@ -46,6 +46,45 @@ class Repository
 end
 ```
 
+### Projections — a declared catalog of computed columns, opted into per read
+
+`projections:` declares named computed columns at the dataset boundary —
+the `scope:` trust model, projection-side: the expression is raw SQL
+**authored at dataset-extension time**, never request data; the name passes
+the column sanitizer. Declaring costs nothing: a projection is only
+evaluated when a read **opts in** via `#project` (query chain) or
+`page(project:)` — cost stays a visible, per-read decision.
+
+```ruby
+class TeamRepository
+  extend PGI::Dataset[DB, :teams,
+                      scope: "deleted_at IS NULL",
+                      projections: { mates_count: "SELECT COUNT(*) FROM teammates WHERE team_id = teams.id" }]
+end
+
+TeamRepository.page(nil, 25, project: [:mates_count]) # the list pays for what it shows
+TeamRepository.project(:mates_count).where(id: id).first # chain form (raw rows)
+TeamRepository.find(id)                               # pays nothing
+```
+
+Notes:
+
+- **Opt-in, never ambient** — an unprojected read carries no projection
+  keys and pays no projection cost. Opting into an undeclared name raises.
+  `#count` ignores projections (an aggregate has no row to enrich).
+- **Writes shed projection keys** — a model round-trip (find → to_h →
+  update) may carry projected attributes; INSERT/UPDATE drop them silently.
+  Write RETURNING never projects: presence of a projected key means "this
+  read chose to know".
+- **Cost when opted in**: evaluated per *output* row — after WHERE/LIMIT —
+  so a paginated read pays `page_size × subquery`. With an indexed correlate
+  (e.g. `teammates(team_id)`) that is an index-only probe per row. Sorting
+  or filtering **on** a projection promotes evaluation to the whole scope;
+  that EXPLAIN is the caller's to own. If a projection ever measures hot,
+  the escalation is a trigger-maintained column, not a cleverer query.
+- A projection name colliding with a base column will overwrite it in the
+  row hash — pick names that cannot collide (`mates_count`, not `count`).
+
 ```sql
 -- Each column used as sort_by in page() needs a composite index on (column, id).
 -- Two separate single-column indexes are not sufficient — Postgres needs

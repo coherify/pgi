@@ -46,6 +46,16 @@ module PGI
       Query.new(@database, @table, nil, **@options).search(columns, terms)
     end
 
+    # Start a query with declared projections opted in (see Query#project).
+    # Like #where, yields raw row hashes; for a paginated, model-mapped
+    # projected read use #page with the project: keyword.
+    #
+    # @param names [Array<Symbol>] declared projection names
+    # @return [Query]
+    def project(*names)
+      Query.new(@database, @table, nil, **@options).project(*names)
+    end
+
     # Insert new row
     #
     # @param args [Hash|Object] row data
@@ -164,8 +174,10 @@ module PGI
     # @param collate [String, nil] collation for the sort column (e.g.
     #   "da-x-icu"), forwarded to Query#keyset
     # @return [Array] list of Models or Hashes
-    def page(cursor = nil, size = 10, sort_by = :id, sort_dir = :asc, *where, joins: {}, search: nil, collate: nil)
+    def page(cursor = nil, size = 10, sort_by = :id, sort_dir = :asc, *where, joins: {}, search: nil, collate: nil,
+             project: [])
       query = Query.new(@database, @table, nil, **@options)
+      query.project(*project) if project.any?
       joins.each { |table, on| query.join(table, on: on) }
       query.where(*where)
       query.search(search[:columns], search[:terms]) if search
@@ -182,7 +194,11 @@ module PGI
     # @param attributes [Hash] column => value
     # @return [Array(Array, Array, Array)] sanitized columns, placeholders, values
     def sql_params(attributes)
-      attrs = attributes.sort.to_h
+      # Projections are READ-ONLY facts computed by the dataset - they ride
+      # every read and RETURNING, so a model round-trip (find -> to_h ->
+      # update) naturally carries them; writes must shed them silently.
+      projections = @options.fetch(:projections, {})
+      attrs = attributes.reject { |k, _| projections.key?(k.to_sym) }.sort.to_h
       [Utils.sanitize_columns(attrs.keys), (1..attrs.size).map { |i| "$#{i}" }, attrs.values]
     end
 
@@ -205,6 +221,11 @@ module PGI
     class << self
       def [](database, table, **options)
         raise "Invalid table name: #{table}" unless table.to_s =~ /\A[a-z_][a-z0-9_]*\z/
+
+        options.fetch(:projections, {}).each do |name, expr|
+          raise "Invalid projection name: #{name.inspect}" unless Utils.valid_column?(name) && name.to_s != "*"
+          raise "Invalid projection expression for #{name.inspect}" unless expr.is_a?(String) && !expr.strip.empty?
+        end
 
         mod = clone
         mod.instance_variable_set("@database", database)
