@@ -100,7 +100,7 @@ describe PGI::DB do
       db = PGI::DB.configure do |options|
         options.pool_size = 1
         options.pool_timeout = 0.2
-        options.pg_conn_uri = ENV.fetch("PG_CONN_URI", "postgresql://pgi:password@localhost:5434/pgi_test")
+        options.pg_conn_uri = PG_CONN_URI
         options.logger = LOG_CATCHER
         options.max_retries = 3
         options.retry_wait = 0

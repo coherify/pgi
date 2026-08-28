@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Server notices route to the configured logger instead of libpq's stderr, on
+  both constructor doors (`conn_uri:` and `conn:`). Severity is preserved:
+  `RAISE WARNING` logs at `warn`, everything else at `debug`.
 - `PGI::Dataset[..., projections: { name: "SQL expr" }]` — a declared catalog
   of computed columns (the `scope:` trust model, projection-side), opted into
   per read via `#project(*names)` / `page(project: [...])`: never evaluated
