@@ -24,12 +24,19 @@ module PGI
 
         new_conn.type_map_for_results = PG::BasicTypeMapForResults.new(new_conn, registry: regi)
         new_conn.type_map_for_queries = PG::BasicTypeMapForQueries.new(new_conn, registry: regi)
-
-        # Server notices (a DROP CASCADE's chatter, a RAISE NOTICE) route to
-        # the configured logger instead of libpq's stderr default: a library
-        # that accepts a logger must not print around it.
-        new_conn.set_notice_processor { |msg| @logger&.debug(msg.strip) }
       end || raise("no connection provided")
+
+      # Server notices (a DROP CASCADE's chatter, a RAISE NOTICE) route to
+      # the configured logger instead of libpq's stderr default: a library
+      # that accepts a logger must not print around it - whichever door the
+      # connection came through. Severity survives the trip, so a RAISE
+      # WARNING still reaches a consumer whose logger runs at INFO.
+      @conn.set_notice_receiver do |result|
+        severity = result.result_error_field(PG::PG_DIAG_SEVERITY_NONLOCALIZED) ||
+                   result.result_error_field(PG::PG_DIAG_SEVERITY)
+        message  = result.result_error_field(PG::PG_DIAG_MESSAGE_PRIMARY) || result.error_message.strip
+        severity == "WARNING" ? @logger&.warn(message) : @logger&.debug(message)
+      end
     end
 
     # Execute a prepared statement. Statements are auto-created with fallback to exec_params
