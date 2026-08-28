@@ -1,34 +1,63 @@
 # CHANGELOG
 
-## Unreleased
+## 1.1.0 (2026-08-28)
 
-- Server notices route to the configured logger instead of libpq's stderr, on
-  both constructor doors (`conn_uri:` and `conn:`). Severity is preserved:
-  `RAISE WARNING` logs at `warn`, everything else at `debug`.
-- `PGI::Dataset[..., projections: { name: "SQL expr" }]` — a declared catalog
-  of computed columns (the `scope:` trust model, projection-side), opted into
-  per read via `#project(*names)` / `page(project: [...])`: never evaluated
-  unless asked, so cost is a visible per-read decision. Names pass the column
-  sanitizer; unknown names raise at `#project`; `#count` ignores them; writes
-  shed projected attribute keys so model round-trips just work.
+The query release: joins, search, projected columns — and server notices that
+respect your logger.
 
-- `PGI::Query#select` — append qualified columns to a joined read's projection
-  so it can return a joined table's columns alongside `"base".*` (`#join` stays
-  filter/sort-only). Bare / `{ table => column }` / `{ table => { column => alias } }`
-  grammar. Raw row hashes only (no model mapping); a projected column colliding
-  with a base column name raises when the rows come back — alias to disambiguate.
-- `PGI::Dataset#search` / `#page(search:)` — case-insensitive substring search:
-  an OR-group of `ILIKE` matches per term, AND'ed together and into the WHERE.
-  LIKE metacharacters are escaped; columns may be qualified with a joined table,
-  so a search spans the same joins; keyset-compatible (adds only a predicate).
-- `PGI::Dataset#join` / `#page(joins:)` — INNER JOINs for filtering and sorting
-  on combined rows (result rows stay the base table's, so model mapping is
-  unchanged). Qualified `where` (`{ users: { name: "x" } }`), qualified sort
-  (`{ users: :name }`) and keyset pagination over a joined sort column (FK -> PK
-  cardinality). Collation support on `#order`/`#keyset` for locale-aware text
-  ordering. An `on:` key may itself be qualified
-  (`{ { memberships: :user_id } => :id }`) to chain a second hop off an earlier
-  join; declare joins in dependency order.
+- **Joins** — `#join(table, on:)` / `#page(joins:)` add INNER JOINs for
+  filtering and sorting on combined rows; result rows stay the base table's,
+  so model mapping is unchanged.
+
+  ```ruby
+  Repository.join(:memberships, on: { id: :member_id })
+            .where(memberships: { accepted: true }).all
+  ```
+
+  `#where` and `#order` take qualified columns (`{ users: :name }`), keyset
+  pagination works over a joined sort column (FK -> PK cardinality), and an
+  `on:` key may itself be qualified to chain a second hop off an earlier join
+  (declare joins in dependency order).
+
+- **Search** — `#search(columns, terms)` / `#page(search:)`: case-insensitive
+  substring search. Every term must hit in some column — the behaviour of a
+  search box that narrows as words are added.
+
+  ```ruby
+  Repository.search([:name, :email], %w[john smith]).all
+  ```
+
+  LIKE metacharacters are escaped, columns may be join-qualified, and it only
+  adds a predicate, so it composes with keyset pagination.
+
+- **Projecting joined columns** — `#select({ table => column })` appends a
+  joined table's column to the result alongside `"base".*` (`#join` alone
+  stays filter/sort-only). Alias form `{ table => { column => alias } }`;
+  rows come back as raw hashes. A projected column colliding with a base
+  column raises when the rows come back — alias to disambiguate.
+
+- **Projections** — a declared catalog of computed columns, opted into per
+  read; never evaluated unless asked, so cost stays a visible per-read
+  decision.
+
+  ```ruby
+  extend PGI::Dataset[DB, :teams,
+                      projections: { mates_count: "SELECT COUNT(*) FROM teammates WHERE team_id = teams.id" }]
+
+  TeamRepository.page(nil, 25, project: [:mates_count])
+  ```
+
+  Unknown names raise at `#project`; `#count` ignores projections; writes shed
+  projected attribute keys so model round-trips just work.
+
+- **Collation** — `#order(:name, :asc, collate: "da-x-icu")` and
+  `#page(..., collate:)` sort text in a named (e.g. ICU) collation, so Danish
+  `æ ø å` file after `z` regardless of the database default.
+
+- **Server notices route to the configured logger** instead of libpq's stderr,
+  on both constructor doors (`conn_uri:` and `conn:`). Severity is preserved:
+  `RAISE WARNING` logs at `warn`, everything else at `debug` — a logger at
+  INFO stays quiet through chatter but still surfaces warnings.
 
 ## 1.0.0
 
