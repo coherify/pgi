@@ -2,11 +2,8 @@
 
 ## Unreleased
 
-- **connection_pool 3** — the dependency widens from `~> 2.4` to
-  `>= 2.4, < 4`. pgi uses `ConnectionPool.new(size:, timeout:)`, `#with`,
-  `#reload` and `ConnectionPool::TimeoutError`; 3.0 changed none of them (its
-  breaking change is positional -> keyword arguments on `checkout`, `reap` and
-  `TimedStack`, which pgi never calls). The suite passes on both bounds.
+- **Dependency updates**
+  - connection_pool: the dependency widens from `~> 2.4` to `>= 2.4, < 4`.
 
 ## 1.1.0 (2026-08-28)
 
