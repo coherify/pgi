@@ -1,0 +1,21 @@
+# The whole suite on every push to main and every pull request (the api#196
+# pattern). `podman compose run --rm ruby` waits for its own postgres, runs
+# rubocop + the specs with 100% coverage enforced, and exits with the
+# container's code. No host ports and no container names, so runs collide
+# with nothing on the shared runner - not even each other.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: linux
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the test image
+        run: podman compose build ruby
+      - name: Run the suite
+        run: podman compose run --rm ruby
