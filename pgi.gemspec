@@ -18,7 +18,7 @@ Gem::Specification.new do |gem|
   gem.require_paths = ["lib"]
   gem.files         = Dir["lib/**/*", "CHANGELOG.md", "LICENSE", "README.md", "VERSION", "pgi.gemspec"]
 
-  gem.add_dependency "connection_pool", "~> 2.4"
+  gem.add_dependency "connection_pool", ">= 2.4", "< 4"
   gem.add_dependency "pg", "~> 1.5"
 
   gem.metadata["rubygems_mfa_required"] = "true"

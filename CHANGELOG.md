@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## Unreleased
+
+- **Dependency updates**
+  - connection_pool: the dependency widens from `~> 2.4` to `>= 2.4, < 4`.
+
 ## 1.1.0 (2026-08-28)
 
 The query release: joins, search, projected columns — and server notices that
