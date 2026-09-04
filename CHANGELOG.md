@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **`Connection.new` requires a connection** — building one with neither
+  `conn:` nor `conn_uri:` now raises `ArgumentError` instead of connecting to
+  whatever libpq's environment defaults point at. Pass `conn_uri: ""` to ask
+  for those defaults on purpose.
+
 - **Dependency updates**
   - connection_pool: the dependency widens from `~> 2.4` to `>= 2.4, < 4`.
 

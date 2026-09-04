@@ -4,6 +4,13 @@ require "pgi/db"
 describe PGI::Connection do
   include PGI::Test::Methods
 
+  describe "arguments" do
+    it "refuses to build without conn or conn_uri, instead of falling back to libpq's defaults" do
+      err = _ { PGI::Connection.new(logger: LOG_CATCHER) }.must_raise ArgumentError
+      _(err.message).must_equal "conn or conn_uri required"
+    end
+  end
+
   describe "server notices" do
     it "routes them to the configured logger, not stderr" do
       io = StringIO.new

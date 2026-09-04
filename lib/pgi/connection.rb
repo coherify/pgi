@@ -10,9 +10,12 @@ module PGI
 
     # Create instance
     #
-    # @param pool [ConnectionPool]
     # @param logger [Logger]
+    # @param conn_uri [String] connection URI; "" asks libpq for its own defaults
+    # @param conn [PG::Connection] an already built connection, used as is
     def initialize(logger:, conn_uri: nil, conn: nil)
+      raise ArgumentError, "conn or conn_uri required" unless conn || conn_uri
+
       @logger = logger
 
       @conn = conn || PG::Connection.new(conn_uri).tap do |new_conn|
@@ -24,7 +27,7 @@ module PGI
 
         new_conn.type_map_for_results = PG::BasicTypeMapForResults.new(new_conn, registry: regi)
         new_conn.type_map_for_queries = PG::BasicTypeMapForQueries.new(new_conn, registry: regi)
-      end || raise("no connection provided")
+      end
 
       # Server notices (a DROP CASCADE's chatter, a RAISE NOTICE) route to
       # the configured logger instead of libpq's stderr default: a library
