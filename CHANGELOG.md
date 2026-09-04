@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **`Connection.new` requires a connection** — building one with neither
+  `conn:` nor `conn_uri:` now raises `ArgumentError` instead of connecting to
+  whatever libpq's environment defaults point at. Pass `conn_uri: ""` to ask
+  for those defaults on purpose.
+
 - **A colliding projection name raises** (behaviour change) — a `projections:`
   entry named after a base column landed as a second result field and silently
   overwrote the base value; the read now raises, as an unaliased joined column
