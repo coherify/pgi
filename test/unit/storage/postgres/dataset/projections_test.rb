@@ -67,6 +67,41 @@ describe "PGI::Dataset projections" do
     _(updated.key?("answer")).must_equal false
   end
 
+  it "raises when a projection name collides with a base column" do
+    # Both land as "name": the row hash would keep the computed value only.
+    shadow = Class.new do
+      extend PGI::Dataset[PG_CONN, :dataset, projections: { name: "SELECT 'shadow'" }]
+    end
+
+    _(-> { shadow.project(:name).where(id: 1).first }).must_raise RuntimeError
+    _(shadow.where(id: 1).first["name"]).must_equal "joe" # unprojected reads are untouched
+  end
+
+  describe "composed with a join" do
+    before do
+      PG_CONN.exec("DROP TABLE IF EXISTS pets")
+      PG_CONN.exec("CREATE TABLE pets (id SERIAL, dataset_id INTEGER, name VARCHAR(256))")
+      PG_CONN.exec("INSERT INTO pets (dataset_id, name) VALUES (1, 'rex')") # joe (id 1) is the fixture row
+    end
+
+    it "appends joined columns and projections onto the qualified star" do
+      query = repo
+              .project(:answer)
+              .join(:pets, on: { id: :dataset_id })
+              .select({ pets: { name: :pet_name } })
+              .where(dataset: { name: "joe" })
+
+      _(query.sql).must_match(
+        /SELECT "dataset"\.\*, "pets"\."name" AS "pet_name", \(SELECT 40 \+ 2\) AS "answer" FROM dataset INNER JOIN "pets"/
+      )
+
+      row = query.first
+      _(row["name"]).must_equal "joe"      # base column
+      _(row["pet_name"]).must_equal "rex"  # joined column
+      _(row["answer"]).must_equal 42       # projection
+    end
+  end
+
   it "rejects invalid declarations at extension time" do
     _ { PGI::Dataset[PG_CONN, :dataset, projections: { "bad name" => "SELECT 1" }] }.must_raise RuntimeError
     _ { PGI::Dataset[PG_CONN, :dataset, projections: { ok: "  " }] }.must_raise RuntimeError

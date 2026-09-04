@@ -58,8 +58,10 @@ Repository.page(nil, 20, :name, :asc)   # first page of 20, sorted by name
 
 The pieces:
 
-* `#select(column1, ...)` — limit the result set to the specified columns
-  (also appends **joined** columns, see [Projecting joined columns](#projecting-joined-columns))
+* `Dataset#select(column1, ...)` — start a query limited to the specified
+  columns of the base table
+* `Query#select(column1, ...)` — append a **joined** table's column onto the
+  base table's columns, see [Projecting joined columns](#projecting-joined-columns)
 * `#where(...)` — can only be called once per query, so combine all conditions
   in a single call. Two forms:
   * `#where("name = ? AND age > ?", ['joe', 21])` — a string clause with placeholders (`?` or `$1`)
@@ -252,8 +254,10 @@ Notes:
   filtering **on** a projection promotes evaluation to the whole scope; that
   EXPLAIN is the caller's to own. If a projection ever measures hot, the
   escalation is a trigger-maintained column, not a cleverer query.
-- A projection name colliding with a base column will overwrite it in the row
-  hash — pick names that cannot collide (`mates_count`, not `count`).
+- **A colliding name raises** — a projection named after a base column would
+  overwrite it in the row hash, so the read raises when the rows come back
+  (same guard as an unaliased joined column). Pick names that cannot collide
+  (`mates_count`, not `count`).
 
 ### Search
 
