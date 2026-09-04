@@ -194,9 +194,8 @@ module PGI
     # @param attributes [Hash] column => value
     # @return [Array(Array, Array, Array)] sanitized columns, placeholders, values
     def sql_params(attributes)
-      # Projections are READ-ONLY facts computed by the dataset - they ride
-      # every read and RETURNING, so a model round-trip (find -> to_h ->
-      # update) naturally carries them; writes must shed them silently.
+      # Projections are READ-ONLY facts computed by the dataset - a model built
+      # from a projected read carries them, so writes must shed them silently.
       projections = @options.fetch(:projections, {})
       attrs = attributes.reject { |k, _| projections.key?(k.to_sym) }.sort.to_h
       [Utils.sanitize_columns(attrs.keys), (1..attrs.size).map { |i| "$#{i}" }, attrs.values]

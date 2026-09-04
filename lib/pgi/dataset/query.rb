@@ -37,7 +37,8 @@ module PGI
       # Opt into declared projections for THIS read: the named computed
       # columns join the select list as (expr) AS name. Names must be
       # declared on the dataset (the trust boundary stays at extension
-      # time); unknown names raise.
+      # time); unknown names raise. A name that collides with a base column
+      # raises when the rows come back, rather than clobbering it.
       #
       # @param names [Array<Symbol>] declared projection names
       # @return [Query] the Query instance (for method chaining)
@@ -367,31 +368,32 @@ module PGI
 
       private
 
-      # Run the query and guard against a projected-column name collision
-      # before the rows are handed back (see #select).
+      # Run the query and guard against a duplicate result field name before
+      # the rows are handed back (see #assert_result_unambiguous!).
       #
       # @return [PG::Result]
       def result
         res = @database.exec_stmt(Utils.stmt_name(@table, sql), sql, params)
-        assert_projection_unambiguous!(res)
+        assert_result_unambiguous!(res)
         res
       end
 
-      # Raise if #select projected two columns onto the same result field name
-      # (a joined column clashing with a base column, or two joined columns) -
-      # the row hash would silently keep only the last, losing data. Only
-      # relevant when #select added columns; a plain base.* read cannot clash.
+      # Raise when two columns land on the same result field name - the row
+      # hash would silently keep only the last, losing data.
+      #
+      # A plain base.* read cannot clash, so only an appended column can:
+      # #select's joined column or an opted-in projections: entry.
       #
       # @param result [PG::Result]
       # @raise [RuntimeError] listing the duplicated field name(s)
-      def assert_projection_unambiguous!(result)
-        return if @select.empty?
+      def assert_result_unambiguous!(result)
+        return if @select.empty? && @projected.empty?
 
         dups = result.fields.tally.select { |_, n| n > 1 }.keys
         return if dups.empty?
 
-        raise "Ambiguous projected column(s): #{dups.join(", ")} - alias with " \
-              "select(table => { column: :alias }) to disambiguate"
+        raise "Ambiguous result column(s): #{dups.join(", ")} - alias a joined column " \
+              "with select(table => { column: :alias }), or rename the colliding projections: entry"
       end
 
       # Render a #select column: a bare column (base table), a { table => column }
