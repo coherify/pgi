@@ -1,8 +1,9 @@
 # The whole suite on every push to main and every pull request (the api#196
 # pattern). `podman compose run --rm ruby` waits for its own postgres, runs
 # rubocop + the specs with 100% coverage enforced, and exits with the
-# container's code. No host ports and no container names, so runs collide
-# with nothing on the shared runner - not even each other.
+# container's code. No host ports, and the project name carries the run id,
+# so two runs on the shared runner never meet - the last step then removes
+# the postgres that `--rm` leaves behind, and the image it just built.
 name: CI
 
 on:
@@ -13,9 +14,16 @@ on:
 jobs:
   test:
     runs-on: linux
+    # act checks every job out into a directory named "hostexecutor", so the
+    # default project name would be the same for every run on this runner.
+    env:
+      COMPOSE_PROJECT_NAME: pgi-ci-${{ github.run_id }}
     steps:
       - uses: actions/checkout@v4
       - name: Build the test image
         run: podman compose build ruby
       - name: Run the suite
         run: podman compose run --rm ruby
+      - name: Tear down
+        if: always()
+        run: podman compose down -v --rmi local
