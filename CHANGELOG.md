@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **`DB.configure` requires `pg_conn_uri`** — leaving it unset used to pass
+  `configure` and raise at the first pool checkout, naming `Connection.new`'s
+  keywords instead of the knob you set; it now raises `ArgumentError` there and
+  then. Pass `pg_conn_uri: ""` to ask libpq for its defaults on purpose.
+
+- **`DB.configure` no longer shares state between databases** (bug fix) — the
+  options lived on the class and the pool read them at checkout time, so a second
+  `configure` silently took over the first DB's pool. Each call now keeps its
+  own options.
+
 - **`Connection.new` requires a connection** — building one with neither
   `conn:` nor `conn_uri:` now raises `ArgumentError` instead of connecting to
   whatever libpq's environment defaults point at. Pass `conn_uri: ""` to ask

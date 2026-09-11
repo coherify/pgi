@@ -109,6 +109,38 @@ describe PGI::DB do
       _(db.instance_variable_get(:@max_retries)).must_equal 3
       _(db.instance_variable_get(:@retry_wait)).must_equal 0
     end
+
+    it "refuses a nil pg_conn_uri" do
+      error = assert_raises ArgumentError do
+        PGI::DB.configure do |options|
+          options.pool_size = 1
+          options.pool_timeout = 0.2
+          options.logger = LOG_CATCHER
+        end
+      end
+
+      _(error.message).must_match(/pg_conn_uri required/)
+    end
+
+    it "gives each database its own connection URI" do
+      first = PGI::DB.configure do |options|
+        options.pool_size = 1
+        options.pool_timeout = 0.2
+        options.pg_conn_uri = PG_CONN_URI
+        options.logger = LOG_CATCHER
+        options.max_retries = 0
+      end
+
+      PGI::DB.configure do |options|
+        options.pool_size = 1
+        options.pool_timeout = 0.2
+        options.pg_conn_uri = "postgresql://pgi:password@127.0.0.1:1/nowhere"
+        options.logger = LOG_CATCHER
+        options.max_retries = 0
+      end
+
+      _(first.db).must_equal "pgi_test"
+    end
   end
 
   describe "#exec_stmt" do
