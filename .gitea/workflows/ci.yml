@@ -3,7 +3,9 @@
 # rubocop + the specs with 100% coverage enforced, and exits with the
 # container's code. No host ports, and the project name carries the run id,
 # so two runs on the shared runner never meet - the last step then removes
-# the postgres that `--rm` leaves behind, and the image it just built.
+# the postgres that `--rm` leaves behind, and the image it just built. The
+# cluster itself lives on a tmpfs, so a run that never reaches that step
+# (a killed runner) still strands nothing.
 name: CI
 
 on:

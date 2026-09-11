@@ -6,6 +6,10 @@ services:
       POSTGRES_USER: pgi
       POSTGRES_PASSWORD: password
       POSTGRES_DB: pgi_test
+    # The image declares VOLUME /var/lib/postgresql; without a mount podman
+    # creates an anonymous volume per run that `down -v` does not own (#37).
+    tmpfs:
+      - /var/lib/postgresql
     healthcheck:
       test: "pg_isready -U pgi -d pgi_test"
       interval: 2s
