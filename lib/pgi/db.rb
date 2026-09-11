@@ -29,8 +29,8 @@ module PGI
 
       yield options
 
-      # Fail at boot, where the knob was set, instead of at the first checkout.
-      raise ArgumentError, 'pg_conn_uri required ("" asks libpq for its defaults)' if options.pg_conn_uri.nil?
+      # Fail where the knob was set, not at the first checkout; "" asks libpq for its defaults.
+      raise ArgumentError, "pg_conn_uri required" if options.pg_conn_uri.nil?
 
       pool = ConnectionPool.new(size: options.pool_size, timeout: options.pool_timeout) do
         Connection.new(conn_uri: options.pg_conn_uri, logger: options.logger)
