@@ -20,19 +20,24 @@ module PGI
       @retry_wait  = retry_wait
     end
 
+    # Build a DB from a block of options. The options are a local, so the pool
+    # block closes over this call's values - a second DB never takes over this one.
     def self.configure
-      @options = Struct.new(
+      options = Struct.new(
         :pool_size, :pool_timeout, :pg_conn_uri, :logger, :max_retries, :retry_wait
       ).new
 
-      yield @options
+      yield options
 
-      pool = ConnectionPool.new(size: @options.pool_size, timeout: @options.pool_timeout) do
-        Connection.new(conn_uri: @options.pg_conn_uri, logger: @options.logger)
+      # Fail at boot, where the knob was set, instead of at the first checkout.
+      raise ArgumentError, 'pg_conn_uri required ("" asks libpq for its defaults)' if options.pg_conn_uri.nil?
+
+      pool = ConnectionPool.new(size: options.pool_size, timeout: options.pool_timeout) do
+        Connection.new(conn_uri: options.pg_conn_uri, logger: options.logger)
       end
 
-      retry_options = { max_retries: @options.max_retries, retry_wait: @options.retry_wait }.compact
-      new(pool, @options.logger, **retry_options)
+      retry_options = { max_retries: options.max_retries, retry_wait: options.retry_wait }.compact
+      new(pool, options.logger, **retry_options)
     end
 
     # wrapper around ConnectionPool#with with auto-healing capabilities
