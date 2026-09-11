@@ -15,10 +15,6 @@ describe "PGI::Dataset joins" do
   before do
     migrator.migrate!(0)
     migrator.migrate!
-    PG_CONN.exec("DROP TABLE IF EXISTS pets")
-    PG_CONN.exec("DROP TABLE IF EXISTS tags")
-    PG_CONN.exec("CREATE TABLE tags (id SERIAL, name VARCHAR(256))")
-    PG_CONN.exec("CREATE TABLE pets (id SERIAL, dataset_id INTEGER, tag_id INTEGER, name VARCHAR(256))")
     # joe (id 1) comes from the fixture migration; one pet per owner so keyset
     # over the joined sort column is well-defined (FK -> PK cardinality). Each
     # pet carries a tag, so pets -> tags is the second hop off the first join.
