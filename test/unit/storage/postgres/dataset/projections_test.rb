@@ -79,8 +79,6 @@ describe "PGI::Dataset projections" do
 
   describe "composed with a join" do
     before do
-      PG_CONN.exec("DROP TABLE IF EXISTS pets")
-      PG_CONN.exec("CREATE TABLE pets (id SERIAL, dataset_id INTEGER, name VARCHAR(256))")
       PG_CONN.exec("INSERT INTO pets (dataset_id, name) VALUES (1, 'rex')") # joe (id 1) is the fixture row
     end
 
