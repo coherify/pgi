@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- **`SchemaMigrator.configure` returns a migrator** (breaking) — config and
+  migrations lived on the class, so a second `configure` took over the first
+  one's connection and merged both migration sets. Each migrator now owns them;
+  call `migrate!`, `current_version` and `destroy!` on it. Migration files are
+  unchanged.
+
+  ```ruby
+  # before                                   # after
+  PGI::SchemaMigrator.configure { |c| ... }  MIGRATOR = PGI::SchemaMigrator.configure { |c| ... }
+  PGI::SchemaMigrator.migrate!               MIGRATOR.migrate!
+  ```
+
+- **Rake tasks are installed per migrator** (breaking) —
+  `Rake.application.rake_require "pgi/tasks"` becomes
+  `require "pgi/tasks"; PGI::Tasks.install(MIGRATOR)`.
+
+- **`SchemaMigrator` logs instead of printing** — "No migrations detected..."
+  goes to the new `config.logger` at `info`, not to `$stdout`.
+
 - **`DB.configure` requires `pg_conn_uri`** — leaving it unset used to pass
   `configure` and raise at the first pool checkout, naming `Connection.new`'s
   keywords instead of the knob you set; it now raises `ArgumentError` there and

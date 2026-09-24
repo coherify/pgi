@@ -18,7 +18,8 @@ top of SQL you already know.
 DB = PGI::DB.configure do |options|
   options.pool_size = 1
   options.pool_timeout = 5
-  options.pg_conn_uri = "postgresql://pgi:password@localhost:5432/pgi_test"
+  options.pg_conn_uri = "postgresql://pgi:password@localhost:5432/pgi_test" # required - "" asks libpq for its
+                                                                            # defaults (PGHOST, PGUSER, ...)
   options.logger = Logger.new($stdout)
   options.max_retries = 30 # optional (default: 30, ~1 min of patience) - shared retry budget for lost connections
                            # and pool checkout timeouts; Float::INFINITY rides out any outage
@@ -305,6 +306,40 @@ blank terms are dropped. Columns take the same `{ table => column }` grammar as
 
 Plain up/down SQL migrations tracked in a `schema_migrations` table — no DSL,
 the migration *is* the SQL.
+
+```ruby
+MIGRATOR = PGI::SchemaMigrator.configure do |config|
+  config.pg_conn = DB
+  config.migration_files = Dir.glob("db/migrations/*.rb")
+  config.seed_files = ["db/seed.rb"]   # optional - read by the db:seed task
+  config.logger = Logger.new($stdout)  # optional - "No migrations detected..." goes here
+end
+
+MIGRATOR.migrate!     # up to the latest version
+MIGRATOR.migrate!(3)  # up or down to version 3
+```
+
+A migration file declares one version, numbered from 1 without gaps:
+
+```ruby
+# db/migrations/0001_members.rb
+PGI::SchemaMigrator.version(1) do |migration|
+  migration.up { "CREATE TABLE members (id SERIAL, name TEXT)" }
+  migration.down { "DROP TABLE members" }
+end
+```
+
+Each migrator loads the files into its own migration set, so two databases
+never share migrations or connections.
+
+Rake tasks (`db:version`, `db:migrate`, `db:rollback[target]`, `db:destroy`,
+`db:seed`) for a migrator:
+
+```ruby
+# Rakefile
+require "pgi/tasks"
+PGI::Tasks.install(MIGRATOR)
+```
 
 ## Development
 

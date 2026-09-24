@@ -2,6 +2,7 @@ require "rake"
 require "test/helper"
 require "pgi/db"
 require "pgi/schema_migrator"
+require "pgi/tasks"
 
 def execute_rake(task, env = "test")
   ENV["RACK_ENV"] = env
@@ -9,22 +10,10 @@ def execute_rake(task, env = "test")
   Rake.application.invoke_task task
 end
 
+# Installed once: a second install would append its actions to every task
+PGI::Tasks.install(PGI::Test::Methods.postgres_migrator(PG_CONN))
+
 describe "tasks.rb" do
-  include PGI::Test::Methods
-
-  let(:pg_conn) { postgres_connection }
-
-  before do
-    PGI::SchemaMigrator.configure do |config|
-      config.migration_files = [File.realpath("test/fixtures/migrations.rb")]
-      config.seed_files = []
-      config.pg_conn = pg_conn
-    end
-
-    Rake.application.rake_require "pgi/tasks"
-    Rake::Task.define_task(:environment)
-  end
-
   describe "db:migrate" do
     it "calls migrate! and print out the current verson" do
       execute_rake("db:rollback")
