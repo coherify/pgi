@@ -202,7 +202,8 @@ module PGI
       # Adds a ORDER BY clause to the query - suports multiple calls to the method
       #
       # @param column [Symbol, Hash] the column - a single-pair Hash qualifies
-      #   it with a joined table: { users: :name }
+      #   it with a joined table: { users: :name }; a declared projection's
+      #   name sorts on its expression
       # @param direction [Symbol] the direction the sort should take - can be either `:desc` or `:asc`
       # @param collate [String, nil] collation for text ordering, e.g. "da-x-icu"
       #   (policy - which locale maps to which collation - belongs to the caller)
@@ -235,7 +236,7 @@ module PGI
       # Do not combine with a conflicting #order call — pages are only correct when
       # the leading sort columns match the cursor predicate.
       #
-      # @param sort_by [Symbol] the sort column
+      # @param sort_by [Symbol] the sort column, or a declared projection's name
       # @param cursor_id [*, nil] id of the last row from the previous page, or nil for the first page
       # @param sort_dir [Symbol] :asc or :desc
       # @param collate [String, nil] collation for the sort column. Must be the
@@ -440,16 +441,24 @@ module PGI
         term.to_s.gsub(/[\\%_]/) { |c| "\\#{c}" }
       end
 
+      # A declared projection's trusted expression, parenthesised; nil for any other name.
+      def projected_term(name)
+        return if name.is_a?(Hash)
+
+        expr = @projections[name.to_sym] || @projections[name.to_s]
+        expr && "(#{expr})"
+      end
+
       def assert_known_table!(table)
         return if table.to_sym == @table.to_sym || @join_tables.include?(table.to_sym)
 
         raise "Unknown table #{table.inspect} - qualify only the base table or joined tables"
       end
 
-      # A column reference with an optional COLLATE. Collation names are
-      # identifiers (e.g. "da-x-icu"), validated and quoted - never params.
+      # A sort term with an optional COLLATE: a declared projection's
+      # expression, else a column. Collation names are validated and quoted.
       def collated_column(column, collate)
-        col = qualified_column(column)
+        col = projected_term(column) || qualified_column(column)
         return col unless collate
 
         raise "Invalid collation: #{collate.inspect}" unless collate.to_s.match?(COLLATION_NAME)

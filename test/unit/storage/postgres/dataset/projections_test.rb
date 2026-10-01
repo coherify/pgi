@@ -77,6 +77,26 @@ describe "PGI::Dataset projections" do
     _(shadow.where(id: 1).first["name"]).must_equal "joe" # unprojected reads are untouched
   end
 
+  describe "as a sort column" do
+    let(:sorted) do
+      Class.new do
+        extend PGI::Dataset[PG_CONN, :dataset, projections: { age_left: "100 - dataset.age" }]
+      end
+    end
+
+    it "orders and seeks on the expression, unprojected" do
+      sorted.insert!(name: "old", age: 90)
+      sorted.insert!(name: "young", age: 10)
+
+      first = sorted.page(nil, 2, :age_left, :asc)
+      _(first.map { |r| r["name"] }).must_equal %w[old joe] # 10 left, then 75
+      _(first.first.key?("age_left")).must_equal false
+
+      rest = sorted.page(first.last["id"], 2, :age_left, :asc)
+      _(rest.map { |r| r["name"] }).must_equal %w[young]
+    end
+  end
+
   describe "composed with a join" do
     before do
       PG_CONN.exec("INSERT INTO pets (dataset_id, name) VALUES (1, 'rex')") # joe (id 1) is the fixture row
