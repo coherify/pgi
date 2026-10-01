@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Sort on a projection** — `#order` and `#page`/`#keyset` accept a declared
+  `projections:` name as the sort column and order (and seek) on its
+  expression, so a list can page on a computed value.
+
 - **`DB.configure` requires `pg_conn_uri`** — leaving it unset used to pass
   `configure` and raise at the first pool checkout, naming `Connection.new`'s
   keywords instead of the knob you set; it now raises `ArgumentError` there and

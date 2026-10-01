@@ -254,6 +254,13 @@ Notes:
   filtering **on** a projection promotes evaluation to the whole scope; that
   EXPLAIN is the caller's to own. If a projection ever measures hot, the
   escalation is a trigger-maintained column, not a cleverer query.
+- **Sort on a projection** — `#order` and `#page`/`#keyset` take a declared
+  projection's name as the sort column and order on its expression; the
+  read need not project it. The cursor row resolves the same expression.
+
+  ```ruby
+  Repository.page(nil, 20, :mates_count, :desc)
+  ```
 - **A colliding name raises** — a projection named after a base column would
   overwrite it in the row hash, so the read raises when the rows come back
   (same guard as an unaliased joined column). Pick names that cannot collide

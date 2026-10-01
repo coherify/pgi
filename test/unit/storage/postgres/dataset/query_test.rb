@@ -201,6 +201,14 @@ describe PGI::Dataset::Query do
       end
     end
 
+    it "sorts and seeks on a declared projection's expression" do
+      projected = PGI::Dataset::Query.new(PG_CONN, :dataset, nil, projections: { age_left: "100 - dataset.age" })
+      projected.keyset(:age_left, 3, :asc).tap do |q|
+        _(q.sql).must_match(/WHERE \(\(100 - dataset\.age\), "dataset"\."id"\) > \(SELECT \(100 - dataset\.age\), "dataset"\."id" FROM dataset WHERE "dataset"\."id" = \$1\)/)
+        _(q.sql).must_match(/ORDER BY \(100 - dataset\.age\) ASC, "dataset"\."id" ASC/)
+      end
+    end
+
     it "raises on invalid direction" do
       e = assert_raises(RuntimeError) { query.keyset(:id, 0, :sideways) }
       _(e.message).must_equal "Invalid ORDER BY direction: :sideways"
