@@ -4,7 +4,7 @@ module PGI
   class Connection
     class JSONDecoder < PG::SimpleDecoder
       def decode(string, _tuple = nil, _field = nil)
-        ::JSON.parse(string, quirks_mode: true, symbolize_names: true)
+        ::JSON.parse(string, symbolize_names: true)
       end
     end
 
