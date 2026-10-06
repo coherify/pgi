@@ -1,10 +1,12 @@
 # CHANGELOG
 
-## Unreleased
+## 1.2.1 (2026-10-06)
 
 - **json 3 compatible** — `JSONDecoder` no longer passes `quirks_mode:` to
   `JSON.parse`. The option has done nothing since json 2.0, and json 3 raises
   `ArgumentError` on unknown options, which broke every jsonb read.
+
+## 1.2.0 (2026-10-02)
 
 - **Sort on a projection** — `#order` and `#page`/`#keyset` accept a declared
   `projections:` name as the sort column and order (and seek) on its
