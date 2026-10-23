@@ -154,7 +154,7 @@ module PGI
     #
     # @param cursor [*, nil] id of the last row from the previous page, or nil for the first page
     # @param size [Integer] number of rows per page
-    # @param sort_by [Symbol] column to sort by
+    # @param sort_by [Symbol] column to sort by, or a declared projection's name
     # @param sort_dir [Symbol] :asc or :desc
     # Joins (filter/sort only - result rows stay base-table rows) are passed
     # as data: joins: { users: { user_id: :id } } maps joined table => on
