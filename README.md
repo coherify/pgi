@@ -263,8 +263,11 @@ Notes:
   ```
 - **A colliding name raises** — a projection named after a base column would
   overwrite it in the row hash, so the read raises when the rows come back
-  (same guard as an unaliased joined column). Pick names that cannot collide
-  (`mates_count`, not `count`).
+  (same guard as an unaliased joined column). Sort-only use is the exception:
+  `#order`/`#keyset` resolve a projection's name before the column, so such a
+  projection silently redefines every sort on that name, even for reads that
+  never project it, and nothing raises because no projected field comes back.
+  Pick names that cannot collide (`mates_count`, not `count`).
 
 ### Search
 
