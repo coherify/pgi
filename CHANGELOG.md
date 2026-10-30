@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 1.3.1 (2026-10-30)
+
+- **A stale prepared statement is planned again** — `#exec_stmt` deallocates
+  and re-prepares a statement that Postgres refuses with `cached plan must not
+  change result type` (a `SELECT *` after an `ALTER TABLE` under a running
+  process) and retries once, instead of raising until the process restarts.
+
 ## 1.3.0 (2026-10-30)
 
 - **A sort-only projection collision raises** — a read that sorts on a

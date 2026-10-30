@@ -56,11 +56,21 @@ module PGI
         return @conn.exec_params(sql, params)
       end
 
+      replanned = false
       begin
         @conn.exec_prepared(stmt_name, params)
       rescue PG::InvalidSqlStatementName
         @logger&.debug "Creating missing prepared statement: \"#{stmt_name}\""
         @conn.prepare(stmt_name, sql)
+        retry
+      rescue PG::FeatureNotSupported => e
+        # The table changed shape under a running process (ALTER TABLE): plan again, once
+        raise if replanned || !e.message.include?("cached plan must not change result type")
+
+        @logger&.debug "Re-preparing stale statement: \"#{stmt_name}\""
+        @conn.exec("DEALLOCATE #{@conn.quote_ident(stmt_name)}")
+        @conn.prepare(stmt_name, sql)
+        replanned = true
         retry
       end
     rescue PG::Error => e

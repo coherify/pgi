@@ -151,6 +151,19 @@ describe PGI::DB do
       _(log).must_match "stmt_name"
     end
 
+    it "plans a statement again when its table changed shape" do
+      subject.exec("CREATE TABLE stale (a INT)")
+      _(subject.exec_stmt("stale_rows", "SELECT * FROM stale").fields).must_equal %w[a]
+
+      subject.exec("ALTER TABLE stale ADD COLUMN b INT")
+      log = LOG_CATCHER.run do
+        _(subject.exec_stmt("stale_rows", "SELECT * FROM stale").fields).must_equal %w[a b]
+      end
+      _(log).must_match "Re-preparing stale statement"
+    ensure
+      subject.exec("DROP TABLE IF EXISTS stale")
+    end
+
     it "falls back to #exec_params on #exec_stmt in transaction" do
       log = LOG_CATCHER.run do
         subject.transaction do
