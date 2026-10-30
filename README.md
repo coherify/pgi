@@ -341,4 +341,4 @@ psql pgi_test -c 'CREATE EXTENSION IF NOT EXISTS "pgcrypto";'
 
 1. Bump `VERSION` and refresh the lock with it: `podman compose run --rm ruby bundle lock`.
 2. Date the version's heading in `CHANGELOG.md`.
-3. Merge, then tag the merge on main: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+3. Merge, then on main `rake release`: it builds the gem, tags the merge and pushes tag and gem.
