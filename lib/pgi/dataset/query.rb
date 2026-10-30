@@ -29,6 +29,7 @@ module PGI
         # cost is a visible, per-read decision.
         @projections = options.fetch(:projections, {})
         @projected   = []
+        @sorted_projections = []
         @joins       = []
         @join_tables = []
         @select      = []
@@ -354,6 +355,7 @@ module PGI
       def count
         @command = "SELECT COUNT(*) FROM #{@table}"
         @order   = {}
+        @sorted_projections = []
         @select    = [] # projection is irrelevant to a COUNT (and would corrupt it)
         @projected = [] # likewise: an aggregate has no row to enrich
         first&.fetch("count", 0)
@@ -383,14 +385,16 @@ module PGI
       # hash would silently keep only the last, losing data.
       #
       # A plain base.* read cannot clash, so only an appended column can:
-      # #select's joined column or an opted-in projections: entry.
+      # #select's joined column or an opted-in projections: entry - or a
+      # projection only sorted on, when its name comes back as a base column (#48).
       #
       # @param result [PG::Result]
       # @raise [RuntimeError] listing the duplicated field name(s)
       def assert_result_unambiguous!(result)
-        return if @select.empty? && @projected.empty?
+        return if @select.empty? && @projected.empty? && @sorted_projections.empty?
 
-        dups = result.fields.tally.select { |_, n| n > 1 }.keys
+        dups  = result.fields.tally.select { |_, n| n > 1 }.keys
+        dups |= (@sorted_projections - @projected.map(&:to_s)) & result.fields
         return if dups.empty?
 
         raise "Ambiguous result column(s): #{dups.join(", ")} - alias a joined column " \
@@ -458,7 +462,9 @@ module PGI
       # A sort term with an optional COLLATE: a declared projection's
       # expression, else a column. Collation names are validated and quoted.
       def collated_column(column, collate)
-        col = projected_term(column) || qualified_column(column)
+        term = projected_term(column)
+        @sorted_projections |= [column.to_s] if term
+        col = term || qualified_column(column)
         return col unless collate
 
         raise "Invalid collation: #{collate.inspect}" unless collate.to_s.match?(COLLATION_NAME)

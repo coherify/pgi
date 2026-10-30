@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## Unreleased
+
+- **A sort-only projection collision raises** — a read that sorts on a
+  `projections:` entry named after a base column raised nothing; it now raises
+  when the shadowed column comes back in the rows (#48).
+
 ## 1.2.1 (2026-10-06)
 
 - **json 3 compatible** — `JSONDecoder` no longer passes `quirks_mode:` to
