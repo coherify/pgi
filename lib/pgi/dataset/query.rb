@@ -9,7 +9,7 @@ module PGI
       # @param database [PGI::DB] a configured instance of DB
       # @param table [Symbol] the name of the database table to operate on
       # @param command [String] the command part of the query (default: `SELECT * FROM <table>`)
-      # @param options [Hash] hash of options: scope, where, params, limit, order, returning
+      # @param options [Hash] hash of options: scope, where, params, limit, order, returning, projections
       # @return [Query] new instance of Query
       TABLE_NAME     = /\A[a-z_][a-z0-9_]*\z/
       COLLATION_NAME = /\A[A-Za-z0-9_-]+\z/
@@ -200,7 +200,7 @@ module PGI
         self
       end
 
-      # Adds a ORDER BY clause to the query - suports multiple calls to the method
+      # Adds an ORDER BY clause to the query - supports multiple calls to the method
       #
       # @param column [Symbol, Hash] the column - a single-pair Hash qualifies
       #   it with a joined table: { users: :name }; a declared projection's
@@ -219,8 +219,8 @@ module PGI
 
       # Adds a LIMIT clause to the query
       #
-      # @param direction [Integer] the direction the sort should take - can be either `:desc` or `:asc`
-      # @raise [RuntimeError] if the direction param is invalid
+      # @param number [Integer, nil] the maximum number of rows; nil lifts the cap
+      # @raise [RuntimeError] if number is neither an Integer nor nil
       # @return [Query] return the Query instance (for method chaining)
       def limit(number)
         raise "LIMIT must be an integer or nil" unless number.nil? || number.is_a?(Integer)
