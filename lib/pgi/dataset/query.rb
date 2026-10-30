@@ -91,8 +91,8 @@ module PGI
 
       # Appends columns to the projection so a joined read can return a joined
       # table's columns alongside the base table's `"base".*` - the one thing
-      # #join deliberately does not do (it is filter/sort only). Because the
-      # projected column is by definition absent from the base model's schema,
+      # #join deliberately does not do (it is filter/sort only). Because a
+      # selected column is by definition absent from the base model's schema,
       # a Query with #select yields RAW row hashes only; it never threads
       # through #page/#all model mapping. Identifiers only - never parameterized.
       #
@@ -112,7 +112,7 @@ module PGI
       #   or names an unknown table
       # @return [Query] return the Query instance (for method chaining)
       def select(*columns)
-        columns.each { |column| @select << projected_column(column) }
+        columns.each { |column| @select << selected_column(column) }
         self
       end
 
@@ -282,7 +282,7 @@ module PGI
         if command.start_with?("SELECT") && (@joins.any? || @select.any?)
           # Joins are filter/sort-only: qualify the default star so joined
           # columns never leak into result rows (and never collide). #select
-          # then appends its explicitly-projected joined columns onto it.
+          # then appends its selected joined columns onto it.
           extra = @select.empty? ? "" : ", #{@select.join(", ")}"
           if command == "SELECT * FROM #{@table}"
             command = %(SELECT "#{@table}".*#{extra} FROM #{@table})
@@ -407,8 +407,8 @@ module PGI
       #
       # @param column [Symbol, Hash] the column reference
       # @raise [RuntimeError] if the Hash form is malformed or names an unknown table
-      # @return [String] the sanitized projection fragment
-      def projected_column(column)
+      # @return [String] the sanitized select-list fragment
+      def selected_column(column)
         return qualified_column(column) unless column.is_a?(Hash) && column.values.first.is_a?(Hash)
 
         raise "Aliased column must be a single { table => { column => alias } } pair" unless column.size == 1

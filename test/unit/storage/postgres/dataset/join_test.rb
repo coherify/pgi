@@ -182,7 +182,7 @@ describe "PGI::Dataset joins" do
       end
     end
 
-    it "returns the projected joined column in the row hash via an alias" do
+    it "returns the selected joined column in the row hash via an alias" do
       rows = repo
              .join(:pets, on: { id: :dataset_id })
              .select({ pets: { name: :pet_name } })
@@ -191,7 +191,7 @@ describe "PGI::Dataset joins" do
 
       _(rows.first.keys.sort).must_equal %w[age id name pet_name]
       _(rows.first["name"]).must_equal "joe"     # base column
-      _(rows.first["pet_name"]).must_equal "rex" # projected joined column
+      _(rows.first["pet_name"]).must_equal "rex" # selected joined column
     end
 
     it "projects across a two-hop join chain" do
@@ -205,7 +205,7 @@ describe "PGI::Dataset joins" do
       _(rows.first["tag_name"]).must_equal "canine" # joe's pet rex carries tag_id 2 (canine)
     end
 
-    it "raises on a projected-column name collision" do
+    it "raises on a selected-column name collision" do
       # pets.name collides with dataset.name - both land as "name"
       _(-> { repo.join(:pets, on: { id: :dataset_id }).select({ pets: :name }).to_a }).must_raise RuntimeError
     end
