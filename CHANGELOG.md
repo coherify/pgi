@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## Unreleased
+## 1.3.0 (2026-10-30)
 
 - **A sort-only projection collision raises** — a read that sorts on a
   `projections:` entry named after a base column raised nothing; it now raises
