@@ -9,7 +9,7 @@ module PGI
       # @param database [PGI::DB] a configured instance of DB
       # @param table [Symbol] the name of the database table to operate on
       # @param command [String] the command part of the query (default: `SELECT * FROM <table>`)
-      # @param options [Hash] hash of options: scope, where, params, limit, order, returning
+      # @param options [Hash] hash of options: scope, where, params, limit, order, returning, projections
       # @return [Query] new instance of Query
       TABLE_NAME     = /\A[a-z_][a-z0-9_]*\z/
       COLLATION_NAME = /\A[A-Za-z0-9_-]+\z/
@@ -29,6 +29,7 @@ module PGI
         # cost is a visible, per-read decision.
         @projections = options.fetch(:projections, {})
         @projected   = []
+        @sorted_projections = []
         @joins       = []
         @join_tables = []
         @select      = []
@@ -90,8 +91,8 @@ module PGI
 
       # Appends columns to the projection so a joined read can return a joined
       # table's columns alongside the base table's `"base".*` - the one thing
-      # #join deliberately does not do (it is filter/sort only). Because the
-      # projected column is by definition absent from the base model's schema,
+      # #join deliberately does not do (it is filter/sort only). Because a
+      # selected column is by definition absent from the base model's schema,
       # a Query with #select yields RAW row hashes only; it never threads
       # through #page/#all model mapping. Identifiers only - never parameterized.
       #
@@ -111,7 +112,7 @@ module PGI
       #   or names an unknown table
       # @return [Query] return the Query instance (for method chaining)
       def select(*columns)
-        columns.each { |column| @select << projected_column(column) }
+        columns.each { |column| @select << selected_column(column) }
         self
       end
 
@@ -199,7 +200,7 @@ module PGI
         self
       end
 
-      # Adds a ORDER BY clause to the query - suports multiple calls to the method
+      # Adds an ORDER BY clause to the query - supports multiple calls to the method
       #
       # @param column [Symbol, Hash] the column - a single-pair Hash qualifies
       #   it with a joined table: { users: :name }; a declared projection's
@@ -218,8 +219,8 @@ module PGI
 
       # Adds a LIMIT clause to the query
       #
-      # @param direction [Integer] the direction the sort should take - can be either `:desc` or `:asc`
-      # @raise [RuntimeError] if the direction param is invalid
+      # @param number [Integer, nil] the maximum number of rows; nil lifts the cap
+      # @raise [RuntimeError] if number is neither an Integer nor nil
       # @return [Query] return the Query instance (for method chaining)
       def limit(number)
         raise "LIMIT must be an integer or nil" unless number.nil? || number.is_a?(Integer)
@@ -281,7 +282,7 @@ module PGI
         if command.start_with?("SELECT") && (@joins.any? || @select.any?)
           # Joins are filter/sort-only: qualify the default star so joined
           # columns never leak into result rows (and never collide). #select
-          # then appends its explicitly-projected joined columns onto it.
+          # then appends its selected joined columns onto it.
           extra = @select.empty? ? "" : ", #{@select.join(", ")}"
           if command == "SELECT * FROM #{@table}"
             command = %(SELECT "#{@table}".*#{extra} FROM #{@table})
@@ -354,6 +355,7 @@ module PGI
       def count
         @command = "SELECT COUNT(*) FROM #{@table}"
         @order   = {}
+        @sorted_projections = []
         @select    = [] # projection is irrelevant to a COUNT (and would corrupt it)
         @projected = [] # likewise: an aggregate has no row to enrich
         first&.fetch("count", 0)
@@ -383,14 +385,16 @@ module PGI
       # hash would silently keep only the last, losing data.
       #
       # A plain base.* read cannot clash, so only an appended column can:
-      # #select's joined column or an opted-in projections: entry.
+      # #select's joined column or an opted-in projections: entry - or a
+      # projection only sorted on, when its name comes back as a base column (#48).
       #
       # @param result [PG::Result]
       # @raise [RuntimeError] listing the duplicated field name(s)
       def assert_result_unambiguous!(result)
-        return if @select.empty? && @projected.empty?
+        return if @select.empty? && @projected.empty? && @sorted_projections.empty?
 
-        dups = result.fields.tally.select { |_, n| n > 1 }.keys
+        dups  = result.fields.tally.select { |_, n| n > 1 }.keys
+        dups |= (@sorted_projections - @projected.map(&:to_s)) & result.fields
         return if dups.empty?
 
         raise "Ambiguous result column(s): #{dups.join(", ")} - alias a joined column " \
@@ -403,8 +407,8 @@ module PGI
       #
       # @param column [Symbol, Hash] the column reference
       # @raise [RuntimeError] if the Hash form is malformed or names an unknown table
-      # @return [String] the sanitized projection fragment
-      def projected_column(column)
+      # @return [String] the sanitized select-list fragment
+      def selected_column(column)
         return qualified_column(column) unless column.is_a?(Hash) && column.values.first.is_a?(Hash)
 
         raise "Aliased column must be a single { table => { column => alias } } pair" unless column.size == 1
@@ -458,7 +462,9 @@ module PGI
       # A sort term with an optional COLLATE: a declared projection's
       # expression, else a column. Collation names are validated and quoted.
       def collated_column(column, collate)
-        col = projected_term(column) || qualified_column(column)
+        term = projected_term(column)
+        @sorted_projections |= [column.to_s] if term
+        col = term || qualified_column(column)
         return col unless collate
 
         raise "Invalid collation: #{collate.inspect}" unless collate.to_s.match?(COLLATION_NAME)

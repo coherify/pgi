@@ -263,11 +263,10 @@ Notes:
   ```
 - **A colliding name raises** — a projection named after a base column would
   overwrite it in the row hash, so the read raises when the rows come back
-  (same guard as an unaliased joined column). Sort-only use is the exception:
-  `#order`/`#keyset` resolve a projection's name before the column, so such a
-  projection silently redefines every sort on that name, even for reads that
-  never project it, and nothing raises because no projected field comes back.
-  Pick names that cannot collide (`mates_count`, not `count`).
+  (same guard as an unaliased joined column). Sorting on such a name raises
+  too: `#order`/`#keyset` resolve a projection's name before the column, so a
+  read that sorts on it without projecting it raises when the shadowed base
+  column comes back in the rows.
 
 ### Search
 
@@ -337,3 +336,9 @@ psql -c "CREATE ROLE pgi WITH login password 'password';"
 createdb --owner pgi pgi_test
 psql pgi_test -c 'CREATE EXTENSION IF NOT EXISTS "pgcrypto";'
 ```
+
+### Release
+
+1. Bump `VERSION` and refresh the lock with it: `podman compose run --rm ruby bundle lock`.
+2. Date the version's heading in `CHANGELOG.md`.
+3. Merge, then tag the merge on main: `git tag vX.Y.Z && git push origin vX.Y.Z`.

@@ -95,6 +95,15 @@ describe "PGI::Dataset projections" do
       rest = sorted.page(first.last["id"], 2, :age_left, :asc)
       _(rest.map { |r| r["name"] }).must_equal %w[young]
     end
+
+    it "raises when a sort-only projection name shadows a base column" do
+      shadow = Class.new do
+        extend PGI::Dataset[PG_CONN, :dataset, projections: { name: "SELECT 'shadow'" }]
+      end
+
+      _(-> { shadow.page(nil, 10, :name, :asc) }).must_raise RuntimeError
+      _(sorted.project(:age_left).order(:age_left).first.key?("age_left")).must_equal true # projected: no shadow
+    end
   end
 
   describe "composed with a join" do
