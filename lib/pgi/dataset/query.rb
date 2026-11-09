@@ -332,21 +332,16 @@ module PGI
       #
       # @return [String] Formatted string explaining query plan
       def explain
-        explain_sql = "EXPLAIN " << sql.dup.tap do |s|
-          params.each_with_index do |x, i|
-            x =
-              case x
-              when String
-                "'#{x}'"
-              else
-                x
-              end
-
-            s.gsub!("$#{i + 1}", x.to_s)
+        # One pass over every $n, so $1 never lands inside $10 (operations#405, PGI-F1)
+        inlined = sql.gsub(/\$(\d+)/) do
+          case (value = params[Regexp.last_match(1).to_i - 1])
+          when String then "'#{value.gsub("'", "''")}'"
+          when nil    then "NULL"
+          else value.to_s
           end
         end
 
-        @database.exec(explain_sql)&.values&.join("\n")
+        @database.exec("EXPLAIN #{inlined}")&.values&.join("\n")
       end
 
       # Get the number of records in a result set

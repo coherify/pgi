@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## Unreleased
+
+- **`#explain` inlines every parameter faithfully** — a query with ten or
+  more parameters had `$1`'s value spliced into `$10`, and a String value with
+  a quote in it broke the EXPLAIN; each placeholder now takes its own value,
+  Strings are quoted with `'` doubled and `nil` renders as `NULL`
+  (operations#405, PGI-F1).
+
 ## 1.3.1 (2026-10-30)
 
 - **A stale prepared statement is planned again** — `#exec_stmt` deallocates
