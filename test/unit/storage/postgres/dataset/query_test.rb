@@ -235,7 +235,22 @@ describe PGI::Dataset::Query do
 
   describe "#explain" do
     it "returns a String with query planner explanation" do
-      _(query.where(name: "jill", age: 25).explain).must_match(/^Limit/)
+      _(query.where(name: "o'neil", age: 25).explain).must_match(/^Limit/)
+    end
+
+    it "inlines each placeholder by its own index, quoting Strings and NULLing nils" do
+      seen = nil
+      db = Object.new
+      db.define_singleton_method(:exec) do |explain_sql|
+        seen = explain_sql
+        nil
+      end
+      clause = Array.new(10, "age = ?").push("name = ?", "name = ?").join(" OR ")
+      PGI::Dataset::Query.new(db, :dataset, nil).where(clause, [*1..10, "o'neil", nil]).explain
+
+      _(seen).must_include "age = 1 OR age = 2"
+      _(seen).must_include "age = 10 OR name = 'o''neil' OR name = NULL"
+      _(seen).wont_include "$"
     end
   end
 
