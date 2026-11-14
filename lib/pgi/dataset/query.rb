@@ -332,16 +332,8 @@ module PGI
       #
       # @return [String] Formatted string explaining query plan
       def explain
-        # One pass over every $n, so $1 never lands inside $10 (operations#405, PGI-F1)
-        inlined = sql.gsub(/\$(\d+)/) do
-          case (value = params[Regexp.last_match(1).to_i - 1])
-          when String then "'#{value.gsub("'", "''")}'"
-          when nil    then "NULL"
-          else value.to_s
-          end
-        end
-
-        @database.exec("EXPLAIN #{inlined}")&.values&.join("\n")
+        # Bound, not inlined: the driver encodes each param as it does for the query itself
+        @database.exec_params("EXPLAIN #{sql}", params).values.join("\n")
       end
 
       # Get the number of records in a result set
