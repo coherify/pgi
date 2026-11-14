@@ -238,19 +238,22 @@ describe PGI::Dataset::Query do
       _(query.where(name: "o'neil", age: 25).explain).must_match(/^Limit/)
     end
 
-    it "inlines each placeholder by its own index, quoting Strings and NULLing nils" do
-      seen = nil
-      db = Object.new
-      db.define_singleton_method(:exec) do |explain_sql|
-        seen = explain_sql
-        nil
-      end
+    it "gives each placeholder its own param, past the tenth" do
       clause = Array.new(10, "age = ?").push("name = ?", "name = ?").join(" OR ")
-      PGI::Dataset::Query.new(db, :dataset, nil).where(clause, [*1..10, "o'neil", nil]).explain
+      plan = query.where(clause, [*1..10, "o'neil", nil]).explain
 
-      _(seen).must_include "age = 1 OR age = 2"
-      _(seen).must_include "age = 10 OR name = 'o''neil' OR name = NULL"
-      _(seen).wont_include "$"
+      _(plan).must_include "(age = 10)"
+      _(plan).must_include "'o''neil'"
+    end
+
+    it "explains a query whose params are a Time, a Date, an Array and a Symbol" do
+      clause = "now() > $1 AND current_date > $2 AND age = ANY($3) AND name = $4"
+      plan = query.where(clause, [Time.utc(2026, 11, 14, 12), Date.new(2026, 11, 14), [25, 30], :joe]).explain
+
+      _(plan).must_include "::timestamp with time zone"
+      _(plan).must_include "'2026-11-14'::date"
+      _(plan).must_include "'{25,30}'::bigint[]"
+      _(plan).must_include "'joe'::text"
     end
   end
 

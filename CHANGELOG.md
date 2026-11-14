@@ -2,11 +2,12 @@
 
 ## Unreleased
 
-- **`#explain` inlines every parameter faithfully** — a query with ten or
-  more parameters had `$1`'s value spliced into `$10`, and a String value with
-  a quote in it broke the EXPLAIN; each placeholder now takes its own value,
-  Strings are quoted with `'` doubled and `nil` renders as `NULL`
-  (operations#405, PGI-F1).
+- **`#explain` binds its parameters** — it spliced them into the SQL text, so
+  a query with ten or more parameters had `$1`'s value inside `$10`, a String
+  with a quote in it broke the EXPLAIN, and a Time, a Date, an Array or a Hash
+  value made it invalid SQL; the parameters are now bound, and the driver
+  encodes each one as it does for the query itself (operations#405, PGI-F1;
+  operations#415, PGI-F2).
 
 ## 1.3.1 (2026-10-30)
 
