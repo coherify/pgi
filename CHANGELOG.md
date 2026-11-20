@@ -8,6 +8,9 @@
   value made it invalid SQL; the parameters are now bound, and the driver
   encodes each one as it does for the query itself (operations#405, PGI-F1;
   operations#415, PGI-F2).
+- **`#exec` and `#exec_params` log a failure** — only `#exec_stmt` logged a
+  `PG::Error`; a failing `#explain`, or a consumer's own `exec_params`, raised
+  with nothing in the log (operations#430, PGI-F2).
 
 ## 1.3.1 (2026-10-30)
 

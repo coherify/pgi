@@ -183,6 +183,24 @@ describe PGI::DB do
     _(log).must_match "syntax error at or near"
   end
 
+  it "logs and re-raises a failing #exec and #exec_params" do
+    log = LOG_CATCHER.run do
+      assert_raises(PG::UndefinedTable) { subject.exec("SELECT * FROM no_such_exec") }
+      assert_raises(PG::UndefinedTable) { subject.exec_params("SELECT * FROM no_such_params WHERE a = $1", [1]) }
+    end
+    _(log).must_match "no_such_exec"
+    _(log).must_match "no_such_params"
+  end
+
+  it "logs a failure inside a transaction once" do
+    log = LOG_CATCHER.run do
+      assert_raises PG::UndefinedTable do
+        subject.transaction { subject.exec_stmt("stmt_name", "SELECT * FROM no_such_stmt") }
+      end
+    end
+    _(log.scan('relation "no_such_stmt"').size).must_equal 1
+  end
+
   it "relays missing methods to PG connection" do
     _(subject.db).must_equal "pgi_test"
   end
