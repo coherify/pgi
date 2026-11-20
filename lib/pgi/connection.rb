@@ -80,6 +80,22 @@ module PGI
       raise
     end
 
+    # Run SQL as PG::Connection#exec does; a failure is logged like #exec_stmt's
+    def exec(...)
+      @conn.exec(...)
+    rescue PG::Error => e
+      @logger&.error(e)
+      raise
+    end
+
+    # Run SQL with bound params; a failure is logged like #exec_stmt's
+    def exec_params(...)
+      @conn.exec_params(...)
+    rescue PG::Error => e
+      @logger&.error(e)
+      raise
+    end
+
     # Pass the remainder of methods on to a PG::Connection
     #
     # @See https://deveiate.org/code/pg/PG/Connection.html
