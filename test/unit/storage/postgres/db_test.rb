@@ -210,6 +210,10 @@ describe PGI::DB do
     _(subject.respond_to?(:nonexistent_method_xyz)).must_equal false
   end
 
+  it "responds to PGI::Connection methods" do
+    _(subject.respond_to?(:exec_stmt)).must_equal true
+  end
+
   it "connection responds to PG::Connection methods" do
     subject.with do |conn|
       _(conn.respond_to?(:host)).must_equal true

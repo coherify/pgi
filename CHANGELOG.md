@@ -11,6 +11,8 @@
 - **`#exec` and `#exec_params` log a failure** — only `#exec_stmt` logged a
   `PG::Error`; a failing `#explain`, or a consumer's own `exec_params`, raised
   with nothing in the log (operations#430, PGI-F2).
+- **`DB#respond_to?` knows `PGI::Connection`'s methods** — it answered false
+  for `exec_stmt`, which the call itself reaches (operations#430, PGI-F1).
 
 ## 1.3.1 (2026-10-30)
 

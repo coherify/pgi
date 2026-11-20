@@ -104,7 +104,7 @@ module PGI
     end
 
     def respond_to_missing?(name, include_private = false)
-      PG::Connection.method_defined?(name) || super
+      Connection.method_defined?(name) || PG::Connection.method_defined?(name) || super
     end
   end
 end
