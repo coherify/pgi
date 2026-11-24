@@ -6,12 +6,19 @@
 # the postgres that `--rm` leaves behind, and the image it just built. The
 # cluster itself lives on a tmpfs, so a run that never reaches that step
 # (a killed runner) still strands nothing.
+#
+# A new push to a pull request cancels that pull request's earlier run
+# (`concurrency`, one group per ref). A run on main is never cancelled.
 name: CI
 
 on:
   push:
     branches: [main]
   pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
