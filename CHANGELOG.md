@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.4.0 (2026-11-27)
+
 - **`#explain` binds its parameters** — it spliced them into the SQL text, so
   a query with ten or more parameters had `$1`'s value inside `$10`, a String
   with a quote in it broke the EXPLAIN, and a Time, a Date, an Array or a Hash
