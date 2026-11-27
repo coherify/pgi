@@ -192,6 +192,10 @@ describe PGI::DB do
     _(log).must_match "no_such_params"
   end
 
+  it "hands #exec's result to a block, as PG does" do
+    _(subject.exec("SELECT 1+1 AS sum") { |result| result.first["sum"] }).must_equal 2
+  end
+
   it "logs a failure inside a transaction once" do
     log = LOG_CATCHER.run do
       assert_raises PG::UndefinedTable do

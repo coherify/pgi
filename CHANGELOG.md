@@ -11,6 +11,9 @@
 - **`#exec` and `#exec_params` log a failure** — only `#exec_stmt` logged a
   `PG::Error`; a failing `#explain`, or a consumer's own `exec_params`, raised
   with nothing in the log (operations#430, PGI-F2).
+- **`DB#exec` passes its block on** — `db.exec(sql) { |result| ... }` ran the
+  query and never called the block, where `PG::Connection#exec` yields the
+  result (operations#439, PGI-F1).
 - **`DB#respond_to?` knows `PGI::Connection`'s methods** — it answered false
   for `exec_stmt`, which the call itself reaches (operations#430, PGI-F1).
 
