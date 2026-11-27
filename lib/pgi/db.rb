@@ -88,9 +88,10 @@ module PGI
       end
     end
 
-    def exec(sql)
+    # Stated, not left to method_missing: a `send(:exec, ...)` would reach Kernel#exec
+    def exec(...)
       with do |conn|
-        conn.exec(sql)
+        conn.exec(...)
       end
     end
 

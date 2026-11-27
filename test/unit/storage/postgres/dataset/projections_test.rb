@@ -49,6 +49,11 @@ describe "PGI::Dataset projections" do
     _(bo.key?("answer")).must_equal false
   end
 
+  it "searches a declared projection by name, the row matched on its expression" do
+    row = repo.insert!(name: "50%_off", age: 4)
+    _(repo.search([:name_upper], ["50%_OFF"]).to_a.map { |r| r["id"] }).must_equal [row["id"]]
+  end
+
   it "rejects opting into undeclared names" do
     _ { repo.project(:nope) }.must_raise RuntimeError
   end

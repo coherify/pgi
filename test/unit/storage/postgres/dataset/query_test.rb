@@ -112,6 +112,13 @@ describe PGI::Dataset::Query do
       end
     end
 
+    it "matches a declared projection's name on its expression, as #order sorts on it" do
+      projected = PGI::Dataset::Query.new(PG_CONN, :dataset, nil, projections: { shown: "COALESCE(dataset.name, 'nobody')" })
+      projected.search(%i[shown name], ["joe"]).tap do |q|
+        _(q.sql).must_match(/WHERE \(\(COALESCE\(dataset\.name, 'nobody'\)\) ILIKE \$1 OR "dataset"\."name" ILIKE \$1\)/)
+      end
+    end
+
     it "is a no-op for empty columns, empty terms or blank-only terms" do
       _(query.search([], ["joe"]).sql).wont_match(/ILIKE/)
       _(query.search([:name], []).sql).wont_match(/ILIKE/)
