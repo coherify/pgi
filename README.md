@@ -291,7 +291,8 @@ Repository.page(cursor, 20, :name, :asc,
 
 LIKE metacharacters (`% _ \`) in a term are escaped so they match literally;
 blank terms are dropped. Columns take the same `{ table => column }` grammar as
-`#where`, so a search spans the same joins. It only adds a predicate, so it is
+`#where`, so a search spans the same joins, and a declared projection's name
+matches on its expression, as it sorts in `#order`. It only adds a predicate, so it is
 **keyset-compatible** — the cursor stays on the sort column.
 
 ### Constraints

@@ -180,9 +180,10 @@ module PGI
       #
       # Columns take the same grammar as #where/#order - a bare column
       # (qualified with the base table) or a { table => column } pair naming the
-      # base table or an already-joined table - so a search can span joins.
+      # base table or an already-joined table - so a search can span joins. As
+      # in #order, a declared projection's name matches on its expression.
       #
-      # @param columns [Array] the text columns to match against
+      # @param columns [Array] the text columns, or declared projection names, to match against
       # @param terms [Array<String>] search terms, already tokenised by the caller
       # @return [Query] return the Query instance (for method chaining)
       def search(columns, terms)
@@ -193,7 +194,7 @@ module PGI
         groups = terms.map do |term|
           @params << "%#{escape_like(term)}%"
           placeholder = "$#{@params.size}"
-          "(#{columns.map { |col| "#{qualified_column(col)} ILIKE #{placeholder}" }.join(" OR ")})"
+          "(#{columns.map { |col| "#{projected_term(col) || qualified_column(col)} ILIKE #{placeholder}" }.join(" OR ")})"
         end.join(" AND ")
 
         @where = @where ? "#{groups} AND (#{@where})" : groups
